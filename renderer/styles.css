@@ -1,0 +1,120 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --accent: #e8a0bf;
+  --accent-deep: #c96a93;
+  --panel-bg: rgba(30, 18, 44, 0.92);
+  --panel-border: rgba(255, 255, 255, 0.16);
+  --text: #f6ecf5;
+  --text-dim: rgba(246, 236, 245, 0.65);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;           /* 关键：窗口完全透明 */
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--text);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  padding: 8px;
+}
+
+/* 宠物舞台：整体系统原生拖拽区（按住宠物任意位置移动窗口，无放大 bug） */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+#player-container {
+  width: 100%;
+  height: 100%;
+  pointer-events: none;   /* 不拦截鼠标，保证系统拖拽接管 */
+}
+
+/* 手柄：平时隐藏（视觉透明），但区域始终接收鼠标事件——鼠标经过时显示 */
+.top-bar {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(340px, 92%);
+  height: 30px;
+  border-radius: 12px;
+  background: rgba(42, 27, 61, 0.55);
+  border: 1px solid var(--panel-border);
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  opacity: 0;                       /* 平时不可见 */
+  transition: opacity 0.18s ease;
+  -webkit-app-region: no-drag;      /* 手柄区域不参与窗口拖拽，保证 hover 生效 */
+  app-region: no-drag;
+  z-index: 20;
+}
+/* 鼠标悬停在窗口内时（主进程 pet:hover-state 驱动）显示手柄 */
+.top-bar.show {
+  opacity: 1;
+}
+
+/* 手柄按钮：☰ − ○ + × 五个按键 */
+.bar-btn {
+  width: 30px;
+  height: 22px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(232, 160, 191, 0.22);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+.bar-btn:hover {
+  background: rgba(232, 160, 191, 0.5);
+}
+.bar-btn.close:hover {
+  background: rgba(224, 92, 92, 0.6);
+}
+#btn-reset { font-size: 9px; }
+
+.bar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+/* 状态提示：默认隐藏，加载/错误时显示 */
+.status-tip {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 90%;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 5px 14px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+.status-tip.hidden {
+  display: none;
+}

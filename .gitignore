@@ -1,0 +1,28 @@
+# 依赖
+node_modules/
+
+# 构建产物
+dist/
+build/
+*.exe
+*.blockmap
+
+# 皮肤素材（版权原因，不入仓库）
+skins/*/
+!skins/README.md
+
+# 日志
+*.log
+npm-debug.log*
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+
+# 本地临时
+.tmp*

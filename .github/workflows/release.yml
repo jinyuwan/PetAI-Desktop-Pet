@@ -1,0 +1,40 @@
+# 构建并发布 Windows 安装包
+
+# 触发方式：推送 v* 开头的 tag，例如 git tag v1.0.0 && git push origin v1.0.0
+# 产出：GitHub Release 页自动挂载 dist/PetAI Setup <版本>.exe
+
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installer
+        run: npx electron-builder --win nsis --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Upload artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.blockmap
+          fail_on_unmatched_files: false

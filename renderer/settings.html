@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>宠物设置</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <main class="settings-card" id="settings-card">
+    <!-- 标题栏：整体可拖拽 -->
+    <header class="card-header">
+      <div class="header-left">
+        <span class="avatar" id="avatar">蕾</span>
+        <div class="header-text">
+          <h1>蕾米 · 设置</h1>
+          <p>AI 桌面宠物</p>
+        </div>
+      </div>
+      <button class="close-btn" id="btn-close" title="关闭">✕</button>
+    </header>
+
+    <!-- 两列布局：左列导航 + 右列内容 -->
+    <div class="settings-body">
+      <!-- 左列：设置选项导航 -->
+      <nav class="side-nav">
+        <button class="nav-item active" data-panel="display">显示</button>
+        <button class="nav-item" data-panel="ai">AI</button>
+        <button class="nav-item" data-panel="pose">姿势</button>
+        <button class="nav-item" data-panel="chat">对话</button>
+        <button class="nav-item" data-panel="about">关于</button>
+        <div class="nav-spacer"></div>
+        <button class="nav-item danger" data-panel="quit">退出</button>
+      </nav>
+
+      <!-- 右列：子菜单内容 -->
+      <section class="panel-area">
+        <!-- 显示 -->
+        <div class="panel active" id="panel-display">
+          <div class="switch-row" id="row-visible">
+            <div class="row-info">
+              <span class="row-title">显示宠物</span>
+              <span class="row-desc">在桌面上显示 / 隐藏蕾米</span>
+            </div>
+            <button class="switch" id="sw-visible" role="switch" aria-checked="true">
+              <span class="knob"></span>
+            </button>
+          </div>
+
+          <div class="switch-row" id="row-top">
+            <div class="row-info">
+              <span class="row-title">窗口置顶</span>
+              <span class="row-desc">悬浮在其他窗口之上</span>
+            </div>
+            <button class="switch" id="sw-top" role="switch" aria-checked="true">
+              <span class="knob"></span>
+            </button>
+          </div>
+
+          <div class="switch-row" id="row-silent">
+            <div class="row-info">
+              <span class="row-title">静默模式</span>
+              <span class="row-desc">仅保留桌宠与手柄，隐藏对话框</span>
+            </div>
+            <button class="switch" id="sw-silent" role="switch" aria-checked="false">
+              <span class="knob"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- AI 配置 -->
+        <div class="panel" id="panel-ai">
+          <div class="ai-form">
+            <label class="ai-field">
+              <span class="ai-label">API 地址</span>
+              <input class="ai-input" id="ai-base" type="text" placeholder="https://api.deepseek.com 或火山方舟 v3 地址" spellcheck="false">
+              <span class="ai-hint">OpenAI 兼容接口地址，不填 /v1 结尾后缀</span>
+            </label>
+            <label class="ai-field">
+              <span class="ai-label">API Key</span>
+              <span class="ai-key-wrap">
+                <input class="ai-input" id="ai-key" type="password" placeholder="sk-…" spellcheck="false">
+                <button class="ai-eye" id="ai-key-toggle" type="button" title="显示/隐藏 API Key">👁</button>
+              </span>
+              <span class="ai-hint">仅保存在本机，由主进程调用，不会泄露到页面</span>
+            </label>
+            <label class="ai-field">
+              <span class="ai-label">模型名</span>
+              <input class="ai-input" id="ai-model" type="text" placeholder="deepseek-chat" spellcheck="false">
+            </label>
+            <label class="ai-field">
+              <span class="ai-label">人设 Prompt（可选）</span>
+              <textarea class="ai-input ai-textarea" id="ai-prompt" rows="4" spellcheck="false"></textarea>
+            </label>
+            <div class="ai-actions">
+              <button class="ai-btn test" id="ai-test">测试连接</button>
+              <button class="ai-btn save" id="ai-save">保存配置</button>
+            </div>
+            <div class="ai-status" id="ai-status"></div>
+          </div>
+        </div>
+
+        <!-- 姿势 -->
+        <div class="panel" id="panel-pose">
+          <div class="switch-row" id="row-auto">
+            <div class="row-info">
+              <span class="row-title">跟随 AI 自动切换</span>
+              <span class="row-desc">由 AI / 状态机自动控制姿势</span>
+            </div>
+            <button class="switch" id="sw-auto" role="switch" aria-checked="true">
+              <span class="knob"></span>
+            </button>
+          </div>
+
+          <!-- 姿势折叠子菜单 -->
+          <div class="pose-fold" id="pose-fold">
+            <button class="fold-header" id="fold-toggle">
+              <span class="fold-label">姿势列表</span>
+              <span class="fold-hint" id="fold-hint">点击切换宠物动画状态</span>
+              <span class="fold-arrow">▾</span>
+            </button>
+            <div class="pose-grid" id="pose-grid"></div>
+          </div>
+          <p class="pose-tip" id="pose-tip">手动选择一个姿势后，将自动关闭「跟随 AI」</p>
+        </div>
+
+        <!-- 对话历史 -->
+        <div class="panel" id="panel-chat">
+          <div class="chat-history-head">
+            <div class="row-info">
+              <span class="row-title">对话历史</span>
+              <span class="row-desc">点击会话卡片切换当前对话</span>
+            </div>
+            <button class="clear-btn" id="btn-clear-chat">清空</button>
+          </div>
+          <div class="chat-history" id="chat-history">
+            <div class="chat-empty">暂无对话记录</div>
+          </div>
+        </div>
+
+        <!-- 关于 -->
+        <div class="panel" id="panel-about">
+          <div class="about-info" id="about-info">
+            <div class="about-row"><span class="about-label">加载中…</span></div>
+          </div>
+          <div class="about-meta">
+            <p>AI 桌面宠物 · Electron 骨架</p>
+            <p>皮肤格式：Spine 工程（json + atlas + png）</p>
+          </div>
+        </div>
+
+        <!-- 退出 -->
+        <div class="panel" id="panel-quit">
+          <div class="quit-panel">
+            <div class="quit-icon">⏻</div>
+            <p class="quit-title">退出宠物</p>
+            <p class="quit-desc">关闭应用并移除托盘图标</p>
+            <button class="quit-btn-big" id="btn-quit">退出</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="card-footer">
+      <p>提示：右键托盘图标也可打开本设置</p>
+    </footer>
+  </main>
+
+  <script src="settings.js"></script>
+</body>
+</html>

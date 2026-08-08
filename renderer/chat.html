@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+  <title>蕾米聊天</title>
+  <link rel="stylesheet" href="chat.css">
+</head>
+<body>
+  <!-- 聊天面板：平时隐藏，hover 宠物或面板时显示 -->
+  <main class="chat-panel" id="chat-panel">
+    <!-- 顶部会话工具条：当前对话 + 新对话 -->
+    <div class="chat-toolbar">
+      <span class="chat-title">💬 对话 <b id="session-num">1</b></span>
+      <button class="new-session-btn" id="new-session-btn" title="开启新对话">＋ 新对话</button>
+    </div>
+
+    <!-- 消息区 -->
+    <div class="chat-msgs" id="chat-msgs"></div>
+
+    <!-- 输入区 -->
+    <div class="chat-input-row">
+      <button class="attach-btn" id="capture-btn" title="识别当前屏幕">🖥</button>
+      <button class="attach-btn" id="attach-btn" title="上传图片">📎</button>
+      <input type="file" id="file-input" accept="image/*" hidden>
+      <input class="chat-input" id="chat-input" type="text" placeholder="和蕾米说点什么…" maxlength="200" autocomplete="off" spellcheck="false">
+      <button class="chat-send" id="chat-send" title="发送">发送</button>
+    </div>
+    <!-- 待发送图片预览 -->
+    <div class="attach-preview" id="attach-preview" hidden>
+      <div class="attach-item">
+        <img class="attach-thumb" id="attach-thumb" alt="待发送图片">
+        <button class="attach-remove" id="attach-remove" title="移除图片">✕</button>
+      </div>
+    </div>
+  </main>
+
+  <script src="chat.js"></script>
+</body>
+</html>

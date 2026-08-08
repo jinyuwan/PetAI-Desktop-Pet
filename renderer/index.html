@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self'">
+  <title>AI 桌面宠物</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 宠物舞台：整体系统原生拖拽区（按住宠物移动窗口，无放大 bug） -->
+  <main class="stage" id="stage">
+    <!-- 手柄：平时隐藏，鼠标经过宠物或手柄时显示 -->
+    <div class="top-bar" id="top-bar">
+      <button class="bar-btn settings-btn" id="settings-btn" title="设置">☰</button>
+      <div class="bar-actions">
+        <button class="bar-btn" id="btn-smaller" title="缩小">−</button>
+        <button class="bar-btn" id="btn-reset" title="重置大小">○</button>
+        <button class="bar-btn" id="btn-larger" title="放大">+</button>
+        <button class="bar-btn close" id="btn-quit" title="退出">×</button>
+      </div>
+    </div>
+    <div id="player-container"></div>
+  </main>
+
+  <!-- 状态提示：默认隐藏，仅加载/错误时显示 -->
+  <div class="status-tip hidden" id="status-tip"></div>
+
+  <!-- Spine Player 运行时（CDN） -->
+  <script src="https://cdn.jsdelivr.net/npm/@esotericsoftware/spine-player@4.2.119/dist/iife/spine-player.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
