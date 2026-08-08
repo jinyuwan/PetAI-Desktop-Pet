@@ -81,6 +81,13 @@ npm run dist    # 打包 Windows 安装包（electron-builder，输出到 dist/�
 | 对话历史 | `%APPDATA%/desktop-pet/chat-history.json` |
 | AI 配置 | `%APPDATA%/desktop-pet/ai-config.json` |
 
+## 🔒 隐私说明
+
+- **API Key 仅存本机**：你的 API Key 只保存在自己电脑的 `%APPDATA%/desktop-pet/` 中，不会随程序、安装包或代码仓库分发，也不会上传到任何服务器
+- **程序与数据分离**：安装包仅包含程序代码，不携带任何个人数据（Key / 对话记录）。对方安装后需自行填写自己的 Key
+- **对话记录本地保存**：聊天历史只写入本机文件，程序不采集、不上报任何使用数据
+- **注意**：使用识图 / 屏幕识别 / AI 对话时，图片与文本会发送到你配置的模型服务商（如 DeepSeek / 豆包 / OpenAI）进行处理，请勿发送敏感信息
+
 ## ⚠️ 版权说明
 
 - 皮肤素材来自网络（bilibili@森哈_Yeah、绝区零虚狩绘本），**仅供个人学习**，请勿商用或二次传播
