@@ -8,11 +8,29 @@
 
   const playerEl = document.getElementById('player-container');
   const statusTip = document.getElementById('status-tip');
+  const bubbleEl = document.getElementById('bubble');
+  const bubbleEmoji = document.getElementById('bubble-emoji');
+  const bubbleText = document.getElementById('bubble-text');
 
   let player = null;       // spine-player 实例
   let currentSkin = null;  // 当前皮肤元数据
   let currentState = 'idle';
   let autoPose = true;     // 跟随 AI：自动模式（与设置窗口同步）
+  let isSleeping = false;  // 打盹中（长时间无互动）
+  let lastIdleMinutes = 0; // 最近一次空闲分钟数（主进程推送）
+
+  /* ---------- 气泡 ---------- */
+
+  let bubbleTimer = null;
+
+  /** 在宠物上方弹出气泡，duration 毫秒后自动消失 */
+  function showBubble(emoji, text, duration) {
+    bubbleEmoji.textContent = emoji || '';
+    bubbleText.textContent = text || '';
+    bubbleEl.classList.add('show');
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => bubbleEl.classList.remove('show'), duration || 3500);
+  }
 
   /* ---------- 自主动作调度器（让宠物"活"起来） ---------- */
   // 空闲时按权重随机播放小动作，动作结束后自然回归 idle。
@@ -164,6 +182,7 @@
   window.pet.startHoverWatch().then(() => {
     window.pet.onHoverChange((inside) => {
       topBar.classList.toggle('show', inside);
+      if (inside) wakePet(); // 鼠标进入 → 唤醒
     });
   });
 
@@ -186,25 +205,17 @@
     }
   });
 
-  /* ---------- 单击互动：轻点宠物给个开心反馈 ---------- */
-  // 注意：宠物窗口整体是系统拖拽区，用 pointerdown/up + 位移/时长判定"轻点"，
-  // 避免把真实拖动误判成点击。
-  let pointerStart = null;
-  window.addEventListener('pointerdown', (e) => {
-    pointerStart = { x: e.screenX, y: e.screenY, t: Date.now() };
-  });
-  window.addEventListener('pointerup', (e) => {
-    if (!pointerStart) return;
-    const dx = e.screenX - pointerStart.x;
-    const dy = e.screenY - pointerStart.y;
-    const dt = Date.now() - pointerStart.t;
-    pointerStart = null;
-    // 位移 < 10px 且时长 < 400ms 才算"轻点"
-    if (Math.hypot(dx, dy) < 10 && dt < 400) {
-      console.log('[pet] 轻点宠物 → 开心回应');
-      lockInteraction(3500);
+  /* ---------- 提醒气泡（番茄钟结束 / 每日闹钟） ---------- */
+  window.pet.onReminderFire((payload) => {
+    if (!payload) return;
+    if (payload.type === 'pomodoro') {
+      lockInteraction(9000);
       setState('task_done');
-      setTimeout(() => setState('idle'), 3200); // 开心 3.2s 后自然回位
+      showBubble('🍅', '番茄钟结束！休息一下吧~', 5000);
+    } else {
+      lockInteraction(6000);
+      setState('thinking');
+      showBubble('⏰', payload.label || '时间到啦！', 4500);
     }
   });
 
@@ -216,8 +227,172 @@
   /* ---------- 窗口控制 ---------- */
   document.getElementById('btn-smaller').addEventListener('click', () => window.pet.resize(-1));
   document.getElementById('btn-larger').addEventListener('click', () => window.pet.resize(1));
-  document.getElementById('btn-reset').addEventListener('click', () => window.pet.resize('reset'));
   document.getElementById('btn-quit').addEventListener('click', () => window.pet.quit());
+
+  /* ---------- 互动：单击随机触发 / 长按弹出菜单选择 ---------- */
+  // 交互按钮位于手柄 no-drag 区域，纯按钮事件不触发窗口拖拽，不会引发放大 bug。
+  const INTERACTIONS = [
+    { emoji: '♡', label: '摸摸头', state: 'task_done', text: '嘿嘿~ 最喜欢你啦！' },
+    { emoji: '👋', label: '打招呼', state: 'task_done', text: '嗨~ 一直在等你哦！' },
+    { emoji: '✨', label: '撒个娇', state: 'task_done', text: '人家想你了嘛~' },
+    { emoji: '🍬', label: '喂糖果', state: 'task_done', text: '好甜！谢谢你！' },
+    { emoji: '❓', label: '歪头疑惑', state: 'thinking', text: '嗯？你在看什么呀？' },
+    { emoji: '😴', label: '睡觉觉', state: 'reading', text: '呼…好困，小眯一会儿' },
+  ];
+
+  const interactBtn = document.getElementById('btn-interact');
+  const interactMenu = document.getElementById('interact-menu');
+  let interactPressTimer = null;
+  let interactMenuTimer = null;
+
+  /** 触发一个交互：播放动作 + 气泡 + 计入陪伴互动 */
+  function playInteraction(it) {
+    lockInteraction(3200);
+    setState(it.state);
+    showBubble(it.emoji, it.text, 2600);
+    setTimeout(() => { if (Date.now() >= interactionLock) setState('idle'); }, 3000);
+    if (window.pet && typeof window.pet.logInteraction === 'function') {
+      window.pet.logInteraction('interact');
+    }
+  }
+
+  /** 构建长按菜单（首次点击时生成，仅一次） */
+  function buildInteractMenu() {
+    if (interactMenu.childElementCount) return;
+    INTERACTIONS.forEach((it) => {
+      const b = document.createElement('button');
+      b.className = 'interact-menu-item';
+      b.innerHTML = '<span class="interact-menu-emoji">' + it.emoji + '</span>' + it.label;
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hideInteractMenu();
+        playInteraction(it);
+      });
+      interactMenu.appendChild(b);
+    });
+  }
+
+  function showInteractMenu() {
+    buildInteractMenu();
+    interactMenu.hidden = false;
+  }
+  function hideInteractMenu() {
+    interactMenu.hidden = true;
+  }
+
+  // 按下：0.5 秒后弹菜单（长按）；松开：若未长按则视为单击随机触发
+  interactBtn.addEventListener('pointerdown', () => {
+    clearTimeout(interactMenuTimer);
+    interactPressTimer = setTimeout(() => {
+      showInteractMenu();
+      interactPressTimer = null;
+    }, 500);
+  });
+  interactBtn.addEventListener('pointerup', () => {
+    clearTimeout(interactPressTimer);
+    interactPressTimer = null;
+    // 菜单已弹出：交给菜单项点击处理，不再随机触发
+    if (!interactMenu.hidden) return;
+    const it = INTERACTIONS[Math.floor(Math.random() * INTERACTIONS.length)];
+    playInteraction(it);
+  });
+  // 点击窗口其他区域时收起菜单
+  window.addEventListener('pointerdown', (e) => {
+    if (e.target !== interactBtn && e.target.closest && !e.target.closest('#interact-menu')) {
+      hideInteractMenu();
+    }
+  });
+  // 鼠标离开菜单后延迟收起
+  interactMenu.addEventListener('mouseleave', () => {
+    clearTimeout(interactMenuTimer);
+    interactMenuTimer = setTimeout(hideInteractMenu, 300);
+  });
+  interactMenu.addEventListener('mouseenter', () => clearTimeout(interactMenuTimer));
+
+  /* ---------- 睡眠 / 唤醒（长时间无互动打盹，鼠标回来即醒） ---------- */
+
+  function sleepPet() {
+    if (isSleeping) return;
+    isSleeping = true;
+    stopAutoActions(); // 打盹期间不自动动作
+    setState('reading');
+    showBubble('💤', '呼…没人陪，小睡一会儿 Zzz', 4000);
+  }
+
+  function wakePet() {
+    if (!isSleeping) return;
+    isSleeping = false;
+    if (autoPose) startAutoActions();
+    setState('idle');
+    showBubble('😊', '嗯？你回来啦！', 2200);
+  }
+
+  window.pet.onIdleTick(({ idleMinutes }) => {
+    lastIdleMinutes = idleMinutes || 0;
+    if (lastIdleMinutes >= 10) sleepPet();
+    else if (lastIdleMinutes < 10) wakePet();
+  });
+
+  /* ---------- 时间感知行为：早晚问候 / 整点报时 / 自言自语 ---------- */
+
+  const MUMBLES = [
+    '嗯…今天做什么好呢？',
+    '嘿嘿，发呆中~',
+    '主人现在在忙什么呢？',
+    '好想和主人说说话呀',
+    '唔…这里的风景不错！',
+  ];
+
+  let lastHourReport = -1;     // 上次整点报时的小时
+  let lastGreetingDate = '';   // 上次问候的日期 key
+  let lastMumbleTime = 0;      // 上次自言自语时间戳
+
+  /** 每 30 秒检查一次时间相关行为（睡眠时不打扰） */
+  function timeTick() {
+    if (isSleeping) return;
+    const now = new Date();
+    const h = now.getHours();
+    const m = now.getMinutes();
+    const dateKey = now.getFullYear() + '-' + now.getMonth() + '-' + now.getDate();
+
+    // 早晚问候：每天一次
+    if (dateKey !== lastGreetingDate) {
+      if (h >= 6 && h < 9) {
+        lastGreetingDate = dateKey;
+        lastHourReport = h;
+        showBubble('🌤', '早安~ 新的一天，蕾米会一直陪着你！', 4000);
+        return;
+      }
+      if (h >= 22) {
+        lastGreetingDate = dateKey;
+        lastHourReport = h;
+        showBubble('🌙', '夜深了~ 忙完记得早点休息哦', 4000);
+        return;
+      }
+      if (h < 5) {
+        lastGreetingDate = dateKey;
+        lastHourReport = h;
+        showBubble('🌙', '都这么晚啦…早点睡吧', 4000);
+        return;
+      }
+      lastGreetingDate = dateKey; // 白天启动：只记录日期，不打扰
+    }
+
+    // 整点报时（每小时一次）
+    if (m === 0 && lastHourReport !== h) {
+      lastHourReport = h;
+      showBubble('🕐', '现在是 ' + h + ' 点整', 3000);
+      return;
+    }
+
+    // 自言自语：空闲 ≥2 分钟且随机，间隔 ≥4 分钟
+    if (lastIdleMinutes >= 2 && Date.now() - lastMumbleTime > 4 * 60000 && Math.random() < 0.25) {
+      lastMumbleTime = Date.now();
+      showBubble('💭', MUMBLES[Math.floor(Math.random() * MUMBLES.length)], 3500);
+    }
+  }
+
+  setInterval(timeTick, 30000);
 
   // 窗口 resize 防抖 250ms 后再通知 spine-player 适配画布
   // 关键：拖动窗口时 Windows 会对无边框透明窗口触发高频微小 resize，

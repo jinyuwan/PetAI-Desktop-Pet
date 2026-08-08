@@ -47,8 +47,8 @@ contextBridge.exposeInMainWorld('pet', {
   /** AI：保存配置 */
   saveAiConfig: (cfg) => ipcRenderer.send('ai:save-config', cfg),
 
-  /** AI：测试连接 */
-  testAi: () => ipcRenderer.invoke('ai:test'),
+  /** AI：测试连接（可传入 { baseURL, apiKey, model } 测试指定配置，缺省测试当前启用项） */
+  testAi: (profile) => ipcRenderer.invoke('ai:test', profile ? { profile } : undefined),
 
   /** AI：发送消息（主进程调用 LLM 流式返回；image 为可选图片 data URL） */
   sendAi: (text, image) => ipcRenderer.send('ai:send', { text, image }),
@@ -103,6 +103,51 @@ contextBridge.exposeInMainWorld('pet', {
 
   /** 打开设置窗口（手柄 ☰ 设置键调用） */
   openSettings: () => ipcRenderer.send('pet:open-settings'),
+
+  /** 获取应用信息（名称 / 版本 / 作者 / GitHub 仓库） */
+  getAppInfo: () => ipcRenderer.invoke('app:get-info'),
+
+  /** 在系统浏览器中打开外部链接（仅 http/https） */
+  openExternal: (url) => ipcRenderer.send('app:open-external', url),
+
+  /** 提醒：读取番茄钟与闹钟状态 */
+  getReminderState: () => ipcRenderer.invoke('reminder:get-state'),
+
+  /** 提醒：启动番茄钟（durationMin 分钟） */
+  startPomodoro: (durationMin) => ipcRenderer.send('reminder:start-pomodoro', { durationMin }),
+
+  /** 提醒：停止番茄钟 */
+  stopPomodoro: () => ipcRenderer.send('reminder:stop-pomodoro'),
+
+  /** 提醒：添加每日闹钟（time 'HH:MM'，label 可选） */
+  addAlarm: (time, label) => ipcRenderer.send('reminder:add-alarm', { time, label }),
+
+  /** 提醒：删除闹钟 */
+  removeAlarm: (id) => ipcRenderer.send('reminder:remove-alarm', id),
+
+  /** 提醒：切换闹钟启用状态 */
+  toggleAlarm: (id, enabled) => ipcRenderer.send('reminder:toggle-alarm', { id, enabled }),
+
+  /** 提醒：监听状态变化（设置窗口刷新） */
+  onReminderUpdated: (cb) => ipcRenderer.on('reminder:updated', (e, state) => cb(state)),
+
+  /** 提醒：监听提醒触发（宠物窗口显示气泡） */
+  onReminderFire: (cb) => ipcRenderer.on('reminder:fire', (e, payload) => cb(payload)),
+
+  /** 陪伴：读取统计（陪伴天数 / 互动次数 / 对话次数） */
+  getCompanionStats: () => ipcRenderer.invoke('companion:get'),
+
+  /** 陪伴：记录一次互动（互动按钮等） */
+  logInteraction: (reason) => ipcRenderer.send('companion:log-interaction', { reason }),
+
+  /** 偏好：读取（userName 称呼） */
+  getPrefs: () => ipcRenderer.invoke('prefs:get'),
+
+  /** 偏好：保存（{ userName }） */
+  setPrefs: (prefs) => ipcRenderer.send('prefs:set', prefs),
+
+  /** 睡眠检测：宠物窗口监听空闲分钟数推送 */
+  onIdleTick: (cb) => ipcRenderer.on('pet:idle-tick', (e, payload) => cb(payload)),
 
   /** 退出应用 */
   quit: () => ipcRenderer.send('app:quit'),

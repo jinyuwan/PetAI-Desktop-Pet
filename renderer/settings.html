@@ -27,8 +27,10 @@
         <button class="nav-item active" data-panel="display">显示</button>
         <button class="nav-item" data-panel="ai">AI</button>
         <button class="nav-item" data-panel="pose">姿势</button>
+        <button class="nav-item" data-panel="reminder">提醒</button>
         <button class="nav-item" data-panel="chat">对话</button>
-        <button class="nav-item" data-panel="about">关于</button>
+        <button class="nav-item" data-panel="about-skin">关于皮肤</button>
+        <button class="nav-item" data-panel="about-app">关于 PetAI</button>
         <div class="nav-spacer"></div>
         <button class="nav-item danger" data-panel="quit">退出</button>
       </nav>
@@ -66,11 +68,34 @@
               <span class="knob"></span>
             </button>
           </div>
+
+          <div class="switch-row" id="row-reset">
+            <div class="row-info">
+              <span class="row-title">重置窗口大小</span>
+              <span class="row-desc">恢复默认尺寸（240 × 336）</span>
+            </div>
+            <button class="reset-size-btn" id="btn-reset-size">重置</button>
+          </div>
         </div>
 
         <!-- AI 配置 -->
         <div class="panel" id="panel-ai">
-          <div class="ai-form">
+          <!-- 配置列表 -->
+          <div class="ai-list-head">
+            <div class="row-info">
+              <span class="row-title">API 配置</span>
+              <span class="row-desc">添加多套服务商配置，一键切换启用</span>
+            </div>
+            <button class="ai-add-btn" id="ai-add">＋ 添加</button>
+          </div>
+          <div class="ai-profile-list" id="ai-profile-list"></div>
+
+          <!-- 配置编辑表单（新增 / 编辑共用） -->
+          <div class="ai-form" id="ai-editor" hidden>
+            <label class="ai-field">
+              <span class="ai-label">配置名称</span>
+              <input class="ai-input" id="ai-name" type="text" placeholder="如：DeepSeek 主用 / Ollama 本地" spellcheck="false">
+            </label>
             <label class="ai-field">
               <span class="ai-label">API 地址</span>
               <input class="ai-input" id="ai-base" type="text" placeholder="https://api.deepseek.com 或火山方舟 v3 地址" spellcheck="false">
@@ -88,16 +113,64 @@
               <span class="ai-label">模型名</span>
               <input class="ai-input" id="ai-model" type="text" placeholder="deepseek-chat" spellcheck="false">
             </label>
-            <label class="ai-field">
-              <span class="ai-label">人设 Prompt（可选）</span>
-              <textarea class="ai-input ai-textarea" id="ai-prompt" rows="4" spellcheck="false"></textarea>
-            </label>
+
+            <!-- 高级设置（折叠） -->
+            <div class="ai-adv">
+              <button class="ai-adv-toggle" id="ai-adv-toggle" type="button">
+                <span>高级设置</span>
+                <span class="ai-hint">温度 / 思考模式 / 联网等</span>
+                <span class="ai-adv-arrow">▾</span>
+              </button>
+              <div class="ai-adv-body" id="ai-adv-body" hidden>
+                <label class="ai-field">
+                  <span class="ai-label">温度 Temperature</span>
+                  <input class="ai-input" id="ai-temp" type="number" min="0" max="2" step="0.1" placeholder="留空 = 服务商默认（0.8）" spellcheck="false">
+                  <span class="ai-hint">越高越随机；不兼容的模型会自动忽略</span>
+                </label>
+                <label class="ai-field">
+                  <span class="ai-label">最大回复 Tokens</span>
+                  <input class="ai-input" id="ai-maxtok" type="number" min="1" step="1" placeholder="留空 = 不限制" spellcheck="false">
+                  <span class="ai-hint">限制单次回复长度，控制消耗</span>
+                </label>
+                <label class="ai-field">
+                  <span class="ai-label">思考模式（reasoning_effort）</span>
+                  <select class="ai-input ai-select" id="ai-effort">
+                    <option value="">跟随模型默认</option>
+                    <option value="low">低 · low</option>
+                    <option value="medium">中 · medium</option>
+                    <option value="high">高 · high</option>
+                  </select>
+                  <span class="ai-hint">仅对支持思考强度的模型生效（如 DeepSeek-R1、o 系列）</span>
+                </label>
+                <label class="ai-field">
+                  <span class="ai-label">附加请求参数（JSON，可选）</span>
+                  <textarea class="ai-input ai-textarea" id="ai-extra" rows="3" spellcheck="false" placeholder='{"tools":[{"type":"web_search"}]}'></textarea>
+                  <span class="ai-hint">服务商特有参数：联网搜索、thinking 开关等，按平台文档填写</span>
+                </label>
+              </div>
+            </div>
+
             <div class="ai-actions">
               <button class="ai-btn test" id="ai-test">测试连接</button>
               <button class="ai-btn save" id="ai-save">保存配置</button>
+              <button class="ai-btn cancel" id="ai-cancel">取消</button>
             </div>
             <div class="ai-status" id="ai-status"></div>
           </div>
+
+          <!-- 全局设置 -->
+          <label class="ai-field ai-prompt-field">
+            <span class="ai-label">人设 Prompt（全局，可选）</span>
+            <textarea class="ai-input ai-textarea" id="ai-prompt" rows="3" spellcheck="false"></textarea>
+            <span class="ai-hint">对所有 API 配置生效；留空则不注入人设</span>
+          </label>
+          <label class="ai-field ai-prompt-field">
+            <span class="ai-label">上下文携带消息数（全局）</span>
+            <input class="ai-input ai-input-num" id="ai-ctx" type="number" min="1" step="1" placeholder="20" spellcheck="false">
+            <span class="ai-hint">只发送最近 N 条对话给模型，控制上下文 Token 消耗；越大越"记得住"</span>
+          </label>
+          <button class="ai-btn save prompt-save" id="ai-prompt-save">保存全局设置</button>
+          <div class="ai-status" id="ai-prompt-status"></div>
         </div>
 
         <!-- 姿势 -->
@@ -124,8 +197,61 @@
           <p class="pose-tip" id="pose-tip">手动选择一个姿势后，将自动关闭「跟随 AI」</p>
         </div>
 
+        <!-- 提醒 -->
+        <div class="panel" id="panel-reminder">
+          <!-- 番茄钟 -->
+          <div class="reminder-section">
+            <div class="reminder-section-head">
+              <span class="reminder-section-title">🍅 番茄钟</span>
+              <span class="reminder-section-desc">专注计时，到点提醒休息</span>
+            </div>
+            <div class="pomodoro-card" id="pomodoro-card">
+              <div class="pomodoro-time" id="pomodoro-time">--:--</div>
+              <div class="pomodoro-row">
+                <select class="ai-input ai-select pomodoro-select" id="pomodoro-duration">
+                  <option value="25">25 分钟</option>
+                  <option value="45">45 分钟</option>
+                  <option value="60">60 分钟</option>
+                  <option value="90">90 分钟</option>
+                </select>
+                <button class="ai-btn save pomodoro-start" id="pomodoro-start">开始专注</button>
+                <button class="ai-btn cancel pomodoro-stop" id="pomodoro-stop" hidden>停止</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 每日闹钟 -->
+          <div class="reminder-section">
+            <div class="reminder-section-head">
+              <span class="reminder-section-title">⏰ 每日闹钟</span>
+              <span class="reminder-section-desc">到点让蕾米跳出来提醒你</span>
+            </div>
+            <div class="alarm-add-row">
+              <input class="ai-input alarm-time" id="alarm-time" type="text" placeholder="15:00" maxlength="5" title="格式：HH:MM（24 小时制）" spellcheck="false">
+              <input class="ai-input alarm-label" id="alarm-label" type="text" placeholder="提醒内容，如：喝水、休息" spellcheck="false">
+              <button class="ai-add-btn alarm-add" id="alarm-add">添加</button>
+            </div>
+            <div class="alarm-list" id="alarm-list">
+              <div class="ai-profile-empty">暂无闹钟，添加一个试试吧</div>
+            </div>
+          </div>
+        </div>
+
         <!-- 对话历史 -->
         <div class="panel" id="panel-chat">
+          <!-- 称呼 -->
+          <div class="user-name-box">
+            <div class="row-info">
+              <span class="row-title">蕾米怎么称呼你</span>
+              <span class="row-desc">会注入 AI 人设，对话中自然称呼你</span>
+            </div>
+            <div class="user-name-actions">
+              <input class="ai-input user-name-input" id="user-name" type="text" placeholder="如：主人、小可爱、老王…" maxlength="20" spellcheck="false">
+              <button class="reset-size-btn user-name-save" id="save-user-name">保存</button>
+            </div>
+            <div class="ai-status" id="user-name-status"></div>
+          </div>
+
           <div class="chat-history-head">
             <div class="row-info">
               <span class="row-title">对话历史</span>
@@ -138,14 +264,42 @@
           </div>
         </div>
 
-        <!-- 关于 -->
-        <div class="panel" id="panel-about">
-          <div class="about-info" id="about-info">
+        <!-- 关于皮肤 -->
+        <div class="panel" id="panel-about-skin">
+          <div class="about-info" id="about-skin-info">
             <div class="about-row"><span class="about-label">加载中…</span></div>
           </div>
           <div class="about-meta">
-            <p>AI 桌面宠物 · Electron 骨架</p>
             <p>皮肤格式：Spine 工程（json + atlas + png）</p>
+          </div>
+        </div>
+
+        <!-- 关于 PetAI -->
+        <div class="panel" id="panel-about-app">
+          <div class="app-about-head">
+            <span class="app-about-logo">蕾</span>
+            <div class="app-about-titles">
+              <span class="app-about-name" id="app-about-name">PetAI</span>
+              <span class="app-about-desc" id="app-about-desc">AI 桌面宠物</span>
+            </div>
+          </div>
+          <div class="about-info" id="about-app-info">
+            <div class="about-row"><span class="about-label">加载中…</span></div>
+          </div>
+          <!-- 陪伴记录 -->
+          <div class="companion-card">
+            <div class="companion-title">🎀 陪伴记录</div>
+            <div class="companion-stats" id="companion-stats">加载中…</div>
+          </div>
+          <button class="app-repo-btn" id="btn-open-repo">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            GitHub 仓库
+          </button>
+          <div class="about-meta">
+            <p>仅供个人学习使用 · 皮肤素材版权归原作者</p>
+            <p>Electron · Spine · 原生 JS</p>
           </div>
         </div>
 
