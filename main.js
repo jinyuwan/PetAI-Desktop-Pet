@@ -224,7 +224,23 @@ function loadChatData() {
   }
   if (!chatData || !Array.isArray(chatData.sessions)) {
     chatData = { sessions: [], activeSessionId: null };
+    return chatData;
   }
+  // 历史修复：清理旧版双写 bug 产生的连续重复消息（同角色、同文本、同图片）
+  let changed = false;
+  chatData.sessions.forEach((s) => {
+    if (!Array.isArray(s.messages) || s.messages.length < 2) return;
+    const clean = [];
+    for (const m of s.messages) {
+      const prev = clean[clean.length - 1];
+      const isDup = prev && prev.role === m.role && prev.text === m.text &&
+        (prev.image || undefined) === (m.image || undefined);
+      if (isDup) { changed = true; continue; }
+      clean.push(m);
+    }
+    if (clean.length !== s.messages.length) s.messages = clean;
+  });
+  if (changed) saveChatData();
   return chatData;
 }
 

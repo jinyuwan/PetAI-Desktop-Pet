@@ -137,7 +137,6 @@
       }
       const text = '（屏幕截图，请帮我看看屏幕上的内容）';
       addMsg(text, 'user', r.image);
-      window.pet.logChat('user', text, r.image);
       waiting = true;
       sendBtn.disabled = true;
       setPose('thinking');
@@ -176,7 +175,6 @@
     input.value = '';
     const img = pendingImage || undefined;
     addMsg(text, 'user', img);
-    window.pet.logChat('user', text, img);
     setPendingImage(null);
 
     waiting = true;
@@ -198,7 +196,6 @@
 
   window.pet.onAiEnd((full) => {
     streamInto(replyEl, full || '（空回复）');
-    window.pet.logChat('bot', full || '');
     waiting = false;
     sendBtn.disabled = false;
     setPose('task_done'); // 完成任务姿态
