@@ -644,7 +644,8 @@ function parseSSE(line) {
 /** 调用 OpenAI 兼容接口（流式），逐段调用 onDelta 回调 */
 async function streamChat(profile, messages, onDelta) {
   const url = profile.baseURL.replace(/\/+$/, '') + '/chat/completions';
-  const resp = await fetch(url, {
+  // net.fetch：跟随系统代理（海外 API 需梯子时也能正常工作）
+  const resp = await net.fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -1149,7 +1150,8 @@ function cleanupStaleUpdates() {
 /** 拉取 GitHub 最新 Release 元数据：{ latest, asset } 或 null */
 async function fetchLatestRelease() {
   try {
-    const resp = await fetch(REPO_API + '/releases/latest', {
+    // 用 net.fetch（Electron 网络栈）：自动遵循系统代理，挂梯子时也能稳定访问 GitHub
+    const resp = await net.fetch(REPO_API + '/releases/latest', {
       headers: { 'User-Agent': 'PetAI-Desktop-Pet' },
     });
     if (resp.status === 404) return { error: '仓库暂无发布版本' };
@@ -1168,7 +1170,7 @@ async function fetchLatestRelease() {
 async function fetchSha512(asset) {
   try {
     const ymlUrl = asset.browser_download_url.replace(/[^/]+$/, 'latest.yml');
-    const resp = await fetch(ymlUrl, { headers: { 'User-Agent': 'PetAI-Desktop-Pet' } });
+    const resp = await net.fetch(ymlUrl, { headers: { 'User-Agent': 'PetAI-Desktop-Pet' } });
     if (!resp.ok) return '';
     const text = await resp.text();
     // electron-builder 的 latest.yml：sha512 为 base64 编码（64 字节哈希）
@@ -1209,7 +1211,8 @@ ipcMain.on('update:download', async (e, payload) => {
   updateDownloading = true;
   const file = path.join(app.getPath('temp'), 'petai-update-' + Date.now() + '.exe');
   try {
-    const resp = await fetch(payload.url, { headers: { 'User-Agent': 'PetAI-Desktop-Pet' } });
+    // net.fetch：跟随系统代理，避免直连 GitHub 下载超时
+    const resp = await net.fetch(payload.url, { headers: { 'User-Agent': 'PetAI-Desktop-Pet' } });
     if (!resp.ok || !resp.body) throw new Error('下载失败（HTTP ' + resp.status + '）');
     const total = Number(resp.headers.get('content-length')) || 0;
     const reader = resp.body.getReader();
