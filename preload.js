@@ -7,6 +7,15 @@ contextBridge.exposeInMainWorld('pet', {
   /** 获取皮肤列表（主进程扫描 skins/ 目录） */
   getSkins: () => ipcRenderer.invoke('skins:list'),
 
+  /** 皮肤：读取当前启用皮肤 id */
+  getActiveSkinId: () => ipcRenderer.invoke('skins:active'),
+
+  /** 皮肤：切换启用皮肤（保存并广播） */
+  setActiveSkin: (skinId) => ipcRenderer.send('skins:set-active', skinId),
+
+  /** 皮肤：监听切换广播（宠物窗口重载皮肤） */
+  onSkinChanged: (cb) => ipcRenderer.on('skin:changed', (e, skinId) => cb(skinId)),
+
   /** 窗口缩放：dir > 0 放大，< 0 缩小，'reset' 重置 */
   resize: (dir) => ipcRenderer.send('pet:resize', dir),
 

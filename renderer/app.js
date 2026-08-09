@@ -409,6 +409,30 @@
 
   /* ---------- 启动 ---------- */
 
+  /** 按 prefs 中的皮肤 id 加载；无匹配时回退到第一个 */
+  async function loadActiveSkin() {
+    const skins = await window.pet.getSkins();
+    if (!skins.length) {
+      showTip('未找到皮肤（skins/ 目录为空）');
+      return;
+    }
+    let target = skins[0];
+    try {
+      const activeId = await window.pet.getActiveSkinId();
+      if (activeId) {
+        const found = skins.find((s) => s.id === activeId);
+        if (found) target = found;
+      }
+    } catch (e) { /* ignore */ }
+    if (currentSkin && currentSkin.id === target.id) return; // 相同皮肤不重复加载
+    await loadSkin(target);
+  }
+
+  // 设置页切换皮肤 → 重载
+  window.pet.onSkinChanged(() => {
+    loadActiveSkin();
+  });
+
   async function init() {
     try {
       // 同步初始自动模式状态
@@ -418,12 +442,7 @@
           if (autoPose) startAutoActions(); // 皮肤就绪前先启动，playAction 内会兜底
         }
       }).catch(() => {});
-      const skins = await window.pet.getSkins();
-      if (!skins.length) {
-        showTip('未找到皮肤（skins/ 目录为空）');
-        return;
-      }
-      await loadSkin(skins[0]);
+      await loadActiveSkin();
     } catch (e) {
       showTip('初始化失败：' + e.message);
     }

@@ -105,9 +105,9 @@
     poseBtns.forEach((b, s) => b.classList.toggle('active', s === state));
   }
 
-  /** 从皮肤元数据构建姿势按钮（标准状态 + 扩展状态） */
-  function buildPoseGrid(skins) {
-    const skin = skins && skins[0];
+  /** 从皮肤元数据构建姿势按钮（标准状态 + 扩展状态），按当前启用皮肤 */
+  function buildPoseGrid() {
+    const skin = allSkins.find((s) => s.id === activeSkinId) || allSkins[0];
     if (!skin) return;
     const entries = Object.keys(skin.states || {}).map((k) => [k, STATE_CN[k] || k]);
     Object.keys(skin.extraStates || {}).forEach((k) => entries.push([k, STATE_CN[k] || k]));
@@ -453,8 +453,36 @@
 
   /* ---------- 关于皮肤 ---------- */
 
+  let allSkins = [];          // 全部皮肤（缓存，供选择与姿势重建）
+  let activeSkinId = '';      // 当前启用皮肤 id
+
+  /** 渲染皮肤切换列表 + 当前皮肤信息 */
   function renderSkinAbout(skins) {
-    const skin = skins && skins[0];
+    allSkins = skins || [];
+    const skin = allSkins.find((s) => s.id === activeSkinId) || allSkins[0];
+    const info = document.getElementById('about-skin-info');
+
+    // 皮肤选择列表（多皮肤时显示）
+    if (allSkins.length > 1) {
+      const picker = document.createElement('div');
+      picker.className = 'skin-picker';
+      picker.innerHTML = allSkins.map((s) =>
+        '<button class="skin-option' + (s.id === activeSkinId ? ' active' : '') + '" data-id="' + s.id + '">' +
+          escapeHtml(s.name || s.id) +
+        '</button>'
+      ).join('');
+      picker.querySelectorAll('.skin-option').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (b.dataset.id !== activeSkinId) window.pet.setActiveSkin(b.dataset.id);
+        });
+      });
+      info.innerHTML = '';
+      info.appendChild(picker);
+    } else {
+      info.innerHTML = '';
+    }
+
+    // 当前皮肤信息
     const rows = [
       ['皮肤', skin ? skin.name : '未加载'],
       ['作者', skin ? skin.author || '—' : '—'],
@@ -462,11 +490,49 @@
       ['素材来源', skin ? skin.source || '—' : '—'],
       ['状态数', skin ? Object.keys(skin.states || {}).length + ' 个' : '—'],
     ];
-    document.getElementById('about-skin-info').innerHTML = rows.map(([label, value]) =>
+    const meta = document.createElement('div');
+    meta.innerHTML = rows.map(([label, value]) =>
       '<div class="about-row"><span class="about-label">' + label + '</span>' +
       '<span class="about-value">' + value + '</span></div>'
     ).join('');
+
+    // 状态映射明细：手写 states + 自动适配 extraStates
+    if (skin && (Object.keys(skin.states || {}).length || Object.keys(skin.extraStates || {}).length)) {
+      const mapBlock = document.createElement('div');
+      mapBlock.className = 'skin-state-map';
+      const entries = [];
+      Object.keys(skin.states || {}).forEach((k) => entries.push([k, skin.states[k], false]));
+      Object.keys(skin.extraStates || {}).forEach((k) => {
+        if (!skin.states || !skin.states[k]) entries.push([k, skin.extraStates[k], true]);
+      });
+      mapBlock.innerHTML = entries.map(([state, anim, auto]) =>
+        '<span class="state-chip' + (auto ? ' auto' : '') + '" title="' + (auto ? '自动适配' : '手动配置') + '">' +
+          (STATE_CN[state] || state) + ' → ' + anim +
+        '</span>'
+      ).join('');
+      meta.appendChild(mapBlock);
+    }
+    info.appendChild(meta);
   }
+
+  /** 读取当前启用皮肤并刷新界面（含姿势按钮重建） */
+  async function loadActiveSkinInfo() {
+    try {
+      activeSkinId = (await window.pet.getActiveSkinId()) || '';
+      renderSkinAbout(allSkins);
+      // 姿势按钮与皮肤状态映射相关，切皮肤后重建
+      if (allSkins.length) {
+        const poseGrid = document.getElementById('pose-grid');
+        poseGrid.innerHTML = '';
+        poseBtns.clear();
+        buildPoseGrid();
+        highlightPose('idle');
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  // 设置窗口打开时 / 皮肤切换后 → 刷新高亮
+  window.pet.onSkinChanged(() => loadActiveSkinInfo());
 
   /* ---------- 关于 PetAI ---------- */
 
@@ -774,8 +840,8 @@
     loadCurrentTheme();
     try {
       const skins = await window.pet.getSkins();
-      buildPoseGrid(skins);
-      renderSkinAbout(skins);
+      allSkins = skins;
+      await loadActiveSkinInfo();
       renderAppAbout();
       renderChatHistory();
       await refreshState(); // 皮肤就绪后再次对齐高亮

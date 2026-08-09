@@ -48,7 +48,7 @@ const companionFile = () => path.join(app.getPath('userData'), 'companion.json')
 const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
 
 let companion = { firstSeen: Date.now(), lastSeen: Date.now(), interactions: 0, chats: 0 };
-let prefs = { userName: '', chatSize: null, lastUpdatePrompted: '', theme: '#e8a0bf' };
+let prefs = { userName: '', chatSize: null, lastUpdatePrompted: '', theme: '#e8a0bf', skinId: '' };
 
 function loadCompanion() {
   try {
@@ -81,6 +81,9 @@ function loadPrefs() {
     }
     if (raw && typeof raw.theme === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.theme)) {
       prefs.theme = raw.theme.toLowerCase();
+    }
+    if (raw && typeof raw.skinId === 'string') {
+      prefs.skinId = raw.skinId.slice(0, 64);
     }
   } catch (e) { /* 默认 */ }
   return prefs;
@@ -791,6 +794,51 @@ function skinDirs() {
   return dirs;
 }
 
+/** 模糊匹配：把标准状态名映射到皮肤已有的动画名（编辑距离 / 包含关系） */
+function fuzzyMatchAnim(stateName, animNames) {
+  if (!animNames || !animNames.length) return '';
+  const s = stateName.toLowerCase();
+  // 1. 精确匹配
+  if (animNames.includes(s)) return s;
+  // 2. 包含关系：动画名包含状态名，或状态名包含动画名
+  const hit = animNames.find((n) => n.toLowerCase().includes(s) || s.includes(n.toLowerCase()));
+  if (hit) return hit;
+  // 3. 关键词映射：thinking→think, reading→read, working→work...
+  const KEYWORDS = {
+    thinking: ['think', 'idle'],
+    reading: ['read', 'idle'],
+    planning: ['plan', 'idle'],
+    working: ['work', 'run', 'walk'],
+    task_done: ['done', 'win', 'cheer', 'happy', 'idle'],
+    work_done: ['done', 'win', 'cheer', 'happy', 'idle'],
+  };
+  const kw = KEYWORDS[s];
+  if (kw) {
+    const k = kw.find((w) => animNames.some((n) => n.toLowerCase().includes(w)));
+    if (k) return animNames.find((n) => n.toLowerCase().includes(k));
+  }
+  return '';
+}
+
+/** 自动补齐皮肤缺失的状态映射：未配置的标准状态，模糊匹配到已有动画名 */
+function autoCompleteSkinStates(skin) {
+  if (!skin || !skin.spine) return skin;
+  const animNames = [];
+  const animCache = skin._animNames || [];
+  if (animCache.length) animNames.push(...animCache);
+  if (!animNames.length) return skin;
+
+  const STANDARD = ['idle', 'thinking', 'reading', 'planning', 'working', 'task_done', 'work_done'];
+  skin.states = skin.states || {};
+  skin.extraStates = skin.extraStates || {};
+  STANDARD.forEach((state) => {
+    if (skin.states[state] || skin.extraStates[state]) return; // 已有映射
+    const anim = fuzzyMatchAnim(state, animNames);
+    if (anim) skin.extraStates[state] = anim; // 放 extraStates，避免覆盖用户手写的 states
+  });
+  return skin;
+}
+
 function loadSkins() {
   const result = [];
   const seen = new Set(); // 同名皮肤只取优先级最高的一个
@@ -813,7 +861,18 @@ function loadSkins() {
         const spine = meta.spine || {};
         const assetOk = ['skeleton', 'atlas', 'png'].every((k) => spine[k] && fs.existsSync(path.join(d, spine[k])));
         if (!assetOk) continue;
-        result.push({
+
+        // 扫描 skeleton JSON 的动画名（.skel 二进制无法直接解析，跳过自动适配）
+        let animNames = [];
+        const skelPath = path.join(d, spine.skeleton);
+        if (/\.json$/i.test(spine.skeleton)) {
+          try {
+            const skel = JSON.parse(fs.readFileSync(skelPath, 'utf8'));
+            animNames = Object.keys(skel.animations || {});
+          } catch (e) { /* 解析失败则无动画名 */ }
+        }
+
+        const skin = autoCompleteSkinStates({
           id: name,
           name: meta.name || name,
           author: meta.author || '',
@@ -822,7 +881,10 @@ function loadSkins() {
           states: meta.states || {},
           extraStates: meta.extraStates || {},
           spine,
+          _animNames: animNames,
         });
+        delete skin._animNames;
+        result.push(skin);
         seen.add(name);
       } catch (e) {
         console.warn('[skins] 跳过损坏皮肤:', name, e.message);
@@ -833,6 +895,22 @@ function loadSkins() {
 }
 
 ipcMain.handle('skins:list', () => loadSkins());
+
+/** 读取当前启用的皮肤 id（prefs 或首个可用皮肤） */
+ipcMain.handle('skins:active', () => {
+  const skins = loadSkins();
+  if (!skins.length) return '';
+  if (prefs.skinId && skins.some((s) => s.id === prefs.skinId)) return prefs.skinId;
+  return skins[0].id;
+});
+
+/** 切换皮肤：保存 prefs 并广播给宠物窗口重新加载 */
+ipcMain.on('skins:set-active', (e, skinId) => {
+  if (typeof skinId !== 'string') return;
+  prefs.skinId = skinId.slice(0, 64);
+  savePrefs();
+  if (win && !win.isDestroyed()) win.webContents.send('skin:changed', prefs.skinId);
+});
 
 /* ---------- skin:// 协议：服务外部皮肤文件 ---------- */
 
