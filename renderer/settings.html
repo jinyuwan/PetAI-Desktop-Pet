@@ -257,8 +257,13 @@
               <span class="row-title">对话历史</span>
               <span class="row-desc">点击会话卡片切换当前对话</span>
             </div>
-            <button class="clear-btn" id="btn-clear-chat">清空</button>
+            <div class="history-actions">
+              <button class="clear-btn neutral" id="btn-export-chat" title="导出全部对话为 JSON 文件（备份 / 换机迁移）">导出</button>
+              <button class="clear-btn neutral" id="btn-import-chat" title="从 JSON 文件导入对话（覆盖当前历史）">导入</button>
+              <button class="clear-btn danger" id="btn-clear-chat">清空</button>
+            </div>
           </div>
+          <div class="history-status" id="history-status"></div>
           <div class="chat-history" id="chat-history">
             <div class="chat-empty">暂无对话记录</div>
           </div>

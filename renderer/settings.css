@@ -923,6 +923,12 @@ body {
   justify-content: space-between;
   gap: 10px;
 }
+.history-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
 .clear-btn {
   border: 1px solid rgba(224, 92, 92, 0.35);
   background: rgba(224, 92, 92, 0.14);
@@ -940,6 +946,27 @@ body {
   background: rgba(224, 92, 92, 0.4);
   color: #fff;
 }
+/* 导出 / 导入：中性色调 */
+.clear-btn.neutral {
+  border-color: rgba(232, 160, 191, 0.4);
+  background: rgba(232, 160, 191, 0.1);
+  color: #ffd9ea;
+}
+.clear-btn.neutral:hover {
+  background: rgba(232, 160, 191, 0.26);
+  color: #fff;
+}
+/* 对话历史状态提示 */
+.history-status {
+  min-height: 16px;
+  margin: 6px 2px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.5px;
+  word-break: break-all;
+}
+.history-status.ok { color: #9be3b1; }
+.history-status.err { color: #ff9c9c; }
 .chat-history {
   display: flex;
   flex-direction: column;

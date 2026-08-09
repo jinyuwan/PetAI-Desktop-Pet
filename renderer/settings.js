@@ -367,6 +367,37 @@
     renderChatHistory();
   });
 
+  /* ---------- 对话历史导出 / 导入 ---------- */
+
+  const historyStatus = document.getElementById('history-status');
+  let historyStatusTimer = null;
+
+  function setHistoryStatus(msg, ok) {
+    historyStatus.textContent = msg;
+    historyStatus.className = 'history-status' + (ok === false ? ' err' : ok === true ? ' ok' : '');
+    clearTimeout(historyStatusTimer);
+    historyStatusTimer = setTimeout(() => { historyStatus.textContent = ''; }, 5000);
+  }
+
+  document.getElementById('btn-export-chat').addEventListener('click', async () => {
+    const r = await window.pet.exportChatHistory();
+    if (!r || r.canceled) return;
+    if (r.ok) setHistoryStatus('已导出到 ' + r.path, true);
+    else setHistoryStatus('导出失败：' + (r.message || '未知错误'), false);
+  });
+
+  document.getElementById('btn-import-chat').addEventListener('click', async () => {
+    if (!confirm('导入将覆盖当前全部对话历史，确定继续？')) return;
+    const r = await window.pet.importChatHistory();
+    if (!r || r.canceled) return;
+    if (r.ok) {
+      setHistoryStatus('导入成功：' + r.count + ' 个会话', true);
+      renderChatHistory();
+    } else {
+      setHistoryStatus('导入失败：' + (r.message || '未知错误'), false);
+    }
+  });
+
   /* ---------- 关于皮肤 ---------- */
 
   function renderSkinAbout(skins) {
@@ -461,7 +492,7 @@
       updateBtn.disabled = true;
       updateBtn.classList.add('downloading');
       updateBtn.textContent = '下载中 0%';
-      window.pet.downloadUpdate(updateInfo.url);
+      window.pet.downloadUpdate(updateInfo.url, updateInfo.sha512);
     } else {
       checkUpdate();
     }

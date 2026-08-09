@@ -2,9 +2,10 @@
  * AI 桌面宠物 — Electron 主进程
  * 职责：透明悬浮窗、置顶、系统原生拖拽、皮肤目录扫描、状态机 IPC
  */
-const { app, BrowserWindow, ipcMain, Menu, screen, Tray, nativeImage, desktopCapturer, shell, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, screen, Tray, nativeImage, desktopCapturer, shell, Notification, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 
 let win = null;
@@ -20,13 +21,28 @@ let chatVisible = false;      // 对话框是否处于显示态（hover 控制�
 let chatHideTimer = null;     // 对话框延迟隐藏定时器
 let silentMode = false;       // 静默模式：仅保留桌宠与手柄，隐藏对话框
 
+/* ---------- 单实例锁：防止多开导致数据互相覆盖 ---------- */
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  // 再次启动时：唤起已有实例的窗口（托盘常驻场景）
+  app.on('second-instance', () => {
+    if (win && !win.isDestroyed()) {
+      win.show();
+      win.setAlwaysOnTop(true, 'screen-saver');
+      if (chatWin && !chatWin.isDestroyed()) chatWin.show();
+    }
+  });
+}
+
 /* ---------- 陪伴记录 & 用户偏好 ---------- */
 
 const companionFile = () => path.join(app.getPath('userData'), 'companion.json');
 const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
 
 let companion = { firstSeen: Date.now(), lastSeen: Date.now(), interactions: 0, chats: 0 };
-let prefs = { userName: '', chatSize: null };
+let prefs = { userName: '', chatSize: null, lastUpdatePrompted: '' };
 
 function loadCompanion() {
   try {
@@ -53,6 +69,9 @@ function loadPrefs() {
     if (raw && raw.chatSize && typeof raw.chatSize.w === 'number' && typeof raw.chatSize.h === 'number') {
       prefs.chatSize = clampChatSize(raw.chatSize.w, raw.chatSize.h);
       chatSize = prefs.chatSize; // 启动时应用记忆的对话框尺寸
+    }
+    if (raw && typeof raw.lastUpdatePrompted === 'string') {
+      prefs.lastUpdatePrompted = raw.lastUpdatePrompted.slice(0, 20);
     }
   } catch (e) { /* 默认 */ }
   return prefs;
@@ -382,6 +401,54 @@ ipcMain.on('chat:delete-session', (e, id) => {
   saveChatData();
 });
 
+/** 对话历史导出：弹出保存对话框，写入 JSON 文件 */
+ipcMain.handle('chat:export', async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const result = await dialog.showSaveDialog(win, {
+    title: '导出对话历史',
+    defaultPath: 'petai-chat-history-' + new Date().toISOString().slice(0, 10) + '.json',
+    filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePath) return { ok: false, canceled: true };
+  try {
+    fs.writeFileSync(result.filePath, JSON.stringify(loadChatData(), null, 2), 'utf8');
+    return { ok: true, path: result.filePath };
+  } catch (err) {
+    return { ok: false, message: err.message || String(err) };
+  }
+});
+
+/** 对话历史导入：选择 JSON 文件，校验结构后整体替换当前历史 */
+ipcMain.handle('chat:import', async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const result = await dialog.showOpenDialog(win, {
+    title: '导入对话历史',
+    filters: [{ name: 'JSON 文件', extensions: ['json'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || !result.filePaths || !result.filePaths[0]) return { ok: false, canceled: true };
+  try {
+    const raw = JSON.parse(fs.readFileSync(result.filePaths[0], 'utf8'));
+    if (!raw || !Array.isArray(raw.sessions)) throw new Error('文件格式不正确（缺少 sessions 列表）');
+    raw.sessions.forEach((s) => {
+      if (!s || typeof s.id !== 'string') throw new Error('文件格式不正确（会话缺少 id）');
+      if (!Array.isArray(s.messages)) s.messages = [];
+    });
+    chatData = {
+      sessions: raw.sessions,
+      activeSessionId: raw.sessions.some((s) => s.id === raw.activeSessionId)
+        ? raw.activeSessionId
+        : (raw.sessions[0] && raw.sessions[0].id) || null,
+    };
+    saveChatData();
+    // 通知聊天对话框重载
+    if (chatWin && !chatWin.isDestroyed()) chatWin.webContents.send('chat:session-changed', true);
+    return { ok: true, count: chatData.sessions.length };
+  } catch (err) {
+    return { ok: false, message: err.message || String(err) };
+  }
+});
+
 /* ---------- AI 对话（自定义 OpenAI 兼容接口，支持多套 API 配置） ---------- */
 
 const aiConfigFile = () => path.join(app.getPath('userData'), 'ai-config.json');
@@ -585,12 +652,6 @@ async function streamChat(profile, messages, onDelta) {
     const delta = parseSSE(buffer.trim());
     if (delta) onDelta(delta);
   }
-}
-
-/** 当前是否有可用的 AI 配置 */
-function aiReady() {
-  const cfg = loadAiConfig();
-  return !!(cfg.baseURL && cfg.apiKey && cfg.model);
 }
 
 /* AI IPC */
@@ -916,36 +977,71 @@ function compareVersions(a, b) {
   return 0;
 }
 
-/** 检查 GitHub 最新 Release：返回 { ok, hasUpdate, latest, current, url, name, size } */
-ipcMain.handle('update:check', async () => {
+/** 启动时清理上次下载残留的临时安装包 */
+function cleanupStaleUpdates() {
+  try {
+    const tempDir = app.getPath('temp');
+    const pattern = /^petai-update-.*\.exe$/i;
+    fs.readdirSync(tempDir).forEach((name) => {
+      if (pattern.test(name)) {
+        try { fs.unlinkSync(path.join(tempDir, name)); } catch (e) { /* 占用则跳过 */ }
+      }
+    });
+  } catch (e) { /* ignore */ }
+}
+
+/** 拉取 GitHub 最新 Release 元数据：{ latest, asset } 或 null */
+async function fetchLatestRelease() {
   try {
     const resp = await fetch(REPO_API + '/releases/latest', {
       headers: { 'User-Agent': 'PetAI-Desktop-Pet' },
     });
-    if (resp.status === 404) return { ok: false, message: '仓库暂无发布版本' };
-    if (!resp.ok) return { ok: false, message: '检查失败（HTTP ' + resp.status + '）' };
+    if (resp.status === 404) return { error: '仓库暂无发布版本' };
+    if (!resp.ok) return { error: '检查失败（HTTP ' + resp.status + '）' };
     const rel = await resp.json();
     const latest = String(rel.tag_name || '').replace(/^v/i, '');
     const asset = (rel.assets || []).find((a) => /\.exe$/i.test(a.name));
-    if (!latest || !asset) return { ok: false, message: '最新版本缺少安装包' };
-    const current = app.getVersion();
-    return {
-      ok: true,
-      hasUpdate: compareVersions(latest, current) > 0,
-      latest,
-      current,
-      url: asset.browser_download_url,
-      name: asset.name,
-      size: asset.size || 0,
-    };
+    if (!latest || !asset) return { error: '最新版本缺少安装包' };
+    return { latest, asset };
   } catch (e) {
-    return { ok: false, message: '网络错误：' + (e.message || String(e)) };
+    return { error: '网络错误：' + (e.message || String(e)) };
   }
+}
+
+/** 尝试获取 latest.yml 中的 sha512 用于下载校验（拿不到则返回空串，不阻塞更新） */
+async function fetchSha512(asset) {
+  try {
+    const ymlUrl = asset.browser_download_url.replace(/[^/]+$/, 'latest.yml');
+    const resp = await fetch(ymlUrl, { headers: { 'User-Agent': 'PetAI-Desktop-Pet' } });
+    if (!resp.ok) return '';
+    const text = await resp.text();
+    const m = text.match(/sha512:\s*"?([A-Fa-f0-9]{128})"?/);
+    return m ? m[1].toLowerCase() : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+/** 检查 GitHub 最新 Release：返回 { ok, hasUpdate, latest, current, url, name, size, sha512 } */
+ipcMain.handle('update:check', async () => {
+  const rel = await fetchLatestRelease();
+  if (rel.error) return { ok: false, message: rel.error };
+  const current = app.getVersion();
+  return {
+    ok: true,
+    hasUpdate: compareVersions(rel.latest, current) > 0,
+    latest: rel.latest,
+    current,
+    url: rel.asset.browser_download_url,
+    name: rel.asset.name,
+    size: rel.asset.size || 0,
+    sha512: await fetchSha512(rel.asset),
+  };
 });
 
 let updateDownloading = false; // 防止重复下载
 
-/** 下载最新安装包到临时目录，完成后静默安装并退出（NSIS /S 覆盖旧版本） */
+/** 下载最新安装包到临时目录，sha512 校验通过后静默安装并退出（NSIS /S 覆盖旧版本） */
 ipcMain.on('update:download', async (e, payload) => {
   if (updateDownloading) return;
   const sender = e.sender;
@@ -958,35 +1054,78 @@ ipcMain.on('update:download', async (e, payload) => {
     const total = Number(resp.headers.get('content-length')) || 0;
     const reader = resp.body.getReader();
     const ws = fs.createWriteStream(file);
+    const hash = crypto.createHash('sha512');
     let received = 0;
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
       ws.write(Buffer.from(value));
+      hash.update(Buffer.from(value));
       received += value.length;
       if (total && sender && !sender.isDestroyed()) {
         sender.send('update:progress', Math.min(99, Math.round((received / total) * 100)));
       }
     }
-    // 等待写入全部落盘再启动安装器
+    // 等待写入全部落盘
     await new Promise((resolve, reject) => {
       ws.on('finish', resolve);
       ws.on('error', reject);
       ws.end();
     });
+
+    // sha512 校验：有期望值时比对，不符则删除并报错
+    const expect = payload.sha512 ? String(payload.sha512).toLowerCase() : '';
+    const actual = hash.digest('hex');
+    if (expect && expect !== actual) {
+      try { fs.unlinkSync(file); } catch (err) { /* ignore */ }
+      throw new Error('安装包校验失败（下载可能不完整），已中止更新');
+    }
+
     if (sender && !sender.isDestroyed()) sender.send('update:done', { file });
+    // 系统通知：新版本已就绪，即将静默安装并重启
+    if (Notification.isSupported()) {
+      try {
+        const n = new Notification({
+          title: '✨ PetAI 更新完成下载',
+          body: '新版本即将自动安装，安装完成后会自动重启。',
+        });
+        n.show();
+      } catch (err) { /* ignore */ }
+    }
     // /S 静默安装 + --updated 标记：覆盖旧版本，安装完成后自动启动新版本
     const proc = spawn(file, ['/S', '--updated'], { detached: true, stdio: 'ignore' });
     proc.unref();
     isQuitting = true;
     setTimeout(() => app.quit(), 800); // 给安装器一点启动时间再退出
   } catch (err) {
-    try { fs.unlinkSync(file); } catch (e) { /* ignore */ }
+    try { fs.unlinkSync(file); } catch (e2) { /* ignore */ }
     if (sender && !sender.isDestroyed()) sender.send('update:error', err.message || String(err));
   } finally {
     updateDownloading = false;
   }
 });
+
+/** 启动 6 秒后静默检查一次更新：发现新版时弹系统通知（点击打开设置），同一版本只提示一次 */
+function startAutoUpdateCheck() {
+  setTimeout(async () => {
+    const rel = await fetchLatestRelease();
+    if (rel.error || compareVersions(rel.latest, app.getVersion()) <= 0) return;
+    // 同一版本只提示一次（记录在 prefs）
+    if (prefs.lastUpdatePrompted === rel.latest) return;
+    prefs.lastUpdatePrompted = rel.latest;
+    savePrefs();
+    if (Notification.isSupported()) {
+      try {
+        const n = new Notification({
+          title: '🎀 PetAI 有新版本 v' + rel.latest,
+          body: '点击查看，可在设置中一键更新。',
+        });
+        n.on('click', () => { openSettingsWindow(); });
+        n.show();
+      } catch (e) { /* ignore */ }
+    }
+  }, 6000);
+}
 
 /* ---------- 鼠标悬停检测（drag 区域不触发 CSS hover，改用主进程轮询） ---------- */
 
@@ -1186,11 +1325,13 @@ app.whenReady().then(() => {
   companionDailyCheck();
   loadPrefs();
   loadReminders();
+  cleanupStaleUpdates(); // 清理上次更新残留的临时安装包
   startReminderWatch();
   createWindow();
   createChatWindow();
   createTray();
   startIdleTick();
+  startAutoUpdateCheck(); // 启动后静默检查新版本
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

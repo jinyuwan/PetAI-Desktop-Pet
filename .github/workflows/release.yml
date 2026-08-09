@@ -39,4 +39,5 @@ jobs:
           files: |
             dist/*.exe
             dist/*.blockmap
+            dist/latest.yml
           fail_on_unmatched_files: false

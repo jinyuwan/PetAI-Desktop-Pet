@@ -44,6 +44,12 @@ contextBridge.exposeInMainWorld('pet', {
   /** 切换当前会话到指定 id（设置 → 对话 点击历史卡片） */
   switchChatSession: (id) => ipcRenderer.send('chat:switch-session', id),
 
+  /** 对话历史导出：弹出保存对话框，返回 { ok, path } */
+  exportChatHistory: () => ipcRenderer.invoke('chat:export'),
+
+  /** 对话历史导入：选择 JSON 文件并替换，返回 { ok, count } 或 { ok:false, message } */
+  importChatHistory: () => ipcRenderer.invoke('chat:import'),
+
   /** 聊天对话框：监听当前会话被删除/变化，需要重载 */
   onSessionChanged: (cb) => ipcRenderer.on('chat:session-changed', (e, changed) => cb(changed)),
 
@@ -155,8 +161,8 @@ contextBridge.exposeInMainWorld('pet', {
   /** 自动更新：检查 GitHub 最新版本（返回 { ok, hasUpdate, latest, current, url, name, size }） */
   checkUpdate: () => ipcRenderer.invoke('update:check'),
 
-  /** 自动更新：下载最新安装包并静默安装（url 来自 checkUpdate） */
-  downloadUpdate: (url) => ipcRenderer.send('update:download', { url }),
+  /** 自动更新：下载最新安装包并静默安装（url 来自 checkUpdate，sha512 可选用于校验） */
+  downloadUpdate: (url, sha512) => ipcRenderer.send('update:download', { url, sha512 }),
 
   /** 自动更新：监听下载进度（0-100） */
   onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (e, pct) => cb(pct)),
