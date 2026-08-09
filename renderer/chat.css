@@ -95,6 +95,27 @@ body {
   background: rgba(232, 160, 191, 0.32);
   color: #fff;
 }
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.reset-size-btn {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-family: inherit;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.reset-size-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
 
 /* 消息区 */
 .chat-msgs {
@@ -146,7 +167,7 @@ body {
 .chat-input-row {
   display: flex;
   gap: 8px;
-  padding: 8px 12px 4px;
+  padding: 8px 26px 4px 12px; /* 右侧留出拖拽手柄空间 */
 }
 .attach-btn {
   flex-shrink: 0;
@@ -263,4 +284,31 @@ body {
   border-radius: 10px;
   margin-bottom: 5px;
   border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* 右下角拖拽手柄：自定义大小 */
+.resize-grip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  z-index: 6;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.resize-grip::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 11px;
+  height: 11px;
+  opacity: 0.7;
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0 2px, transparent 2px 4px);
+  transition: opacity 0.15s ease;
+}
+.resize-grip:hover::after,
+.resize-grip:active::after {
+  opacity: 1;
 }

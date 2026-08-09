@@ -12,7 +12,10 @@
     <!-- 顶部会话工具条：当前对话 + 新对话 -->
     <div class="chat-toolbar">
       <span class="chat-title">💬 对话 <b id="session-num">1</b></span>
-      <button class="new-session-btn" id="new-session-btn" title="开启新对话">＋ 新对话</button>
+      <div class="toolbar-actions">
+        <button class="reset-size-btn" id="reset-size-btn" title="恢复默认大小">恢复默认大小</button>
+        <button class="new-session-btn" id="new-session-btn" title="开启新对话">＋ 新对话</button>
+      </div>
     </div>
 
     <!-- 消息区 -->
@@ -33,6 +36,9 @@
         <button class="attach-remove" id="attach-remove" title="移除图片">✕</button>
       </div>
     </div>
+
+    <!-- 右下角拖拽手柄：自定义大小 -->
+    <div class="resize-grip" id="resize-grip" title="拖动调整大小"></div>
   </main>
 
   <script src="chat.js"></script>

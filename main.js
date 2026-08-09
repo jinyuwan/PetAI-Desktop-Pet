@@ -25,7 +25,7 @@ const companionFile = () => path.join(app.getPath('userData'), 'companion.json')
 const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
 
 let companion = { firstSeen: Date.now(), lastSeen: Date.now(), interactions: 0, chats: 0 };
-let prefs = { userName: '' };
+let prefs = { userName: '', chatSize: null };
 
 function loadCompanion() {
   try {
@@ -48,7 +48,11 @@ function saveCompanion() {
 function loadPrefs() {
   try {
     const raw = JSON.parse(fs.readFileSync(prefsFile(), 'utf8'));
-    if (raw && typeof raw.userName === 'string') prefs = { userName: raw.userName.slice(0, 20) };
+    if (raw && typeof raw.userName === 'string') prefs.userName = raw.userName.slice(0, 20);
+    if (raw && raw.chatSize && typeof raw.chatSize.w === 'number' && typeof raw.chatSize.h === 'number') {
+      prefs.chatSize = clampChatSize(raw.chatSize.w, raw.chatSize.h);
+      chatSize = prefs.chatSize; // 启动时应用记忆的对话框尺寸
+    }
   } catch (e) { /* 默认 */ }
   return prefs;
 }
@@ -97,9 +101,14 @@ const MIN_SCALE = 0.45;    // 最小 180×252
 const MAX_SCALE = 2.0;     // 最大 800×1120
 let petScale = DEFAULT_SCALE; // 默认以默认尺寸启动
 
-/* 聊天对话框尺寸 */
+/* 聊天对话框尺寸（支持自定义大小，范围钳制） */
 const CHAT_W = 320;
 const CHAT_H = 230;
+const CHAT_MIN_W = 280;
+const CHAT_MIN_H = 210;
+const CHAT_MAX_W = 760;
+const CHAT_MAX_H = 620;
+let chatSize = { w: CHAT_W, h: CHAT_H }; // 当前对话框尺寸（自定义后记忆于 prefs）
 
 /** 皮肤规范：白名单标准状态 */
 const STANDARD_STATES = [
@@ -159,29 +168,29 @@ function layoutChatWindow() {
   const wa = screen.getDisplayMatching(pb).workArea;
   const gap = 10;
   let x, y;
-  if (pb.y + pb.height + gap + CHAT_H <= wa.y + wa.height) {
+  if (pb.y + pb.height + gap + chatSize.h <= wa.y + wa.height) {
     // 下方：水平居中于宠物
-    x = Math.round(pb.x + (pb.width - CHAT_W) / 2);
+    x = Math.round(pb.x + (pb.width - chatSize.w) / 2);
     y = pb.y + pb.height + gap;
-  } else if (pb.x + pb.width + gap + CHAT_W <= wa.x + wa.width) {
+  } else if (pb.x + pb.width + gap + chatSize.w <= wa.x + wa.width) {
     // 右侧：垂直居中
     x = pb.x + pb.width + gap;
-    y = Math.round(pb.y + (pb.height - CHAT_H) / 2);
+    y = Math.round(pb.y + (pb.height - chatSize.h) / 2);
   } else {
     // 左侧：垂直居中
-    x = pb.x - gap - CHAT_W;
-    y = Math.round(pb.y + (pb.height - CHAT_H) / 2);
+    x = pb.x - gap - chatSize.w;
+    y = Math.round(pb.y + (pb.height - chatSize.h) / 2);
   }
-  x = Math.max(wa.x + 4, Math.min(x, wa.x + wa.width - CHAT_W - 4));
-  y = Math.max(wa.y + 4, Math.min(y, wa.y + wa.height - CHAT_H - 4));
-  chatWin.setBounds({ x, y, width: CHAT_W, height: CHAT_H });
+  x = Math.max(wa.x + 4, Math.min(x, wa.x + wa.width - chatSize.w - 4));
+  y = Math.max(wa.y + 4, Math.min(y, wa.y + wa.height - chatSize.h - 4));
+  chatWin.setBounds({ x, y, width: chatSize.w, height: chatSize.h });
 }
 
 /** 创建聊天对话框窗口（平时透明隐藏，hover 显示） */
 function createChatWindow() {
   chatWin = new BrowserWindow({
-    width: CHAT_W,
-    height: CHAT_H,
+    width: chatSize.w,
+    height: chatSize.h,
     transparent: true,
     frame: false,
     alwaysOnTop: true,
@@ -200,6 +209,45 @@ function createChatWindow() {
   chatWin.on('closed', () => { chatWin = null; });
   layoutChatWindow();
 }
+
+/** 钳制对话框尺寸到允许范围（可选工作区上限） */
+function clampChatSize(w, h, wa) {
+  let W = Math.max(CHAT_MIN_W, Math.min(CHAT_MAX_W, Math.round(Number(w) || CHAT_W)));
+  let H = Math.max(CHAT_MIN_H, Math.min(CHAT_MAX_H, Math.round(Number(h) || CHAT_H)));
+  if (wa) {
+    W = Math.min(W, Math.max(CHAT_MIN_W, wa.width - 16));
+    H = Math.min(H, Math.max(CHAT_MIN_H, wa.height - 16));
+  }
+  return { w: W, h: H };
+}
+
+/** 应用对话框尺寸：钳制 → 记忆 → setSize；位置仅做边界钳制，保持拖拽锚点稳定 */
+function applyChatSize(w, h) {
+  if (!chatWin || chatWin.isDestroyed()) return;
+  const wa = screen.getDisplayMatching(win && !win.isDestroyed() ? win.getBounds() : chatWin.getBounds()).workArea;
+  const size = clampChatSize(w, h, wa);
+  chatSize = size;
+  prefs.chatSize = size;
+  savePrefs();
+  // 窗口创建时 resizable:false，setSize 会被忽略——缩放前临时允许，完成后恢复
+  const wasResizable = chatWin.isResizable();
+  if (!wasResizable) chatWin.setResizable(true);
+  chatWin.setSize(size.w, size.h, false);
+  chatWin.setResizable(wasResizable);
+  const [x, y] = chatWin.getPosition();
+  const cx = Math.max(wa.x + 4, Math.min(x, wa.x + wa.width - size.w - 4));
+  const cy = Math.max(wa.y + 4, Math.min(y, wa.y + wa.height - size.h - 4));
+  chatWin.setPosition(cx, cy);
+}
+
+/* 对话框自定义大小（渲染层拖拽右下角手柄触发） */
+ipcMain.on('chat:resize', (e, payload) => {
+  if (!payload || typeof payload.w !== 'number' || typeof payload.h !== 'number') return;
+  applyChatSize(payload.w, payload.h);
+});
+
+/** 恢复默认大小 */
+ipcMain.on('chat:reset-size', () => applyChatSize(CHAT_W, CHAT_H));
 
 /** 切换对话框显示态（通知渲染层做透明度动画） */
 function setChatVisible(v) {

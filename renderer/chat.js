@@ -28,6 +28,49 @@
     panel.classList.toggle('show', inside);
   });
 
+  /* ---------- 自定义大小（右下角拖拽 + 恢复默认） ---------- */
+  const resetSizeBtn = document.getElementById('reset-size-btn');
+  const grip = document.getElementById('resize-grip');
+
+  resetSizeBtn.addEventListener('click', () => window.pet.resetChatSize());
+
+  let resizeState = null;   // { sx, sy, sw, sh, cx, cy } 拖拽起始/当前数据
+  let resizePending = false;
+  grip.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    resizeState = {
+      sx: e.clientX,
+      sy: e.clientY,
+      sw: window.innerWidth,
+      sh: window.innerHeight,
+      cx: e.clientX,
+      cy: e.clientY,
+    };
+    try { grip.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    e.preventDefault();
+  });
+  grip.addEventListener('pointermove', (e) => {
+    if (!resizeState) return;
+    resizeState.cx = e.clientX;
+    resizeState.cy = e.clientY;
+    if (resizePending) return;
+    resizePending = true;
+    requestAnimationFrame(() => {
+      resizePending = false;
+      if (!resizeState) return;
+      const w = resizeState.sw + (resizeState.cx - resizeState.sx);
+      const h = resizeState.sh + (resizeState.cy - resizeState.sy);
+      window.pet.resizeChat(w, h);
+    });
+  });
+  function endResize(e) {
+    if (!resizeState) return;
+    resizeState = null;
+    try { grip.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+  }
+  grip.addEventListener('pointerup', endResize);
+  grip.addEventListener('pointercancel', endResize);
+
   /* ---------- 消息 ---------- */
 
   function addMsg(text, who, image) {

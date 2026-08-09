@@ -10,6 +10,12 @@ contextBridge.exposeInMainWorld('pet', {
   /** 窗口缩放：dir > 0 放大，< 0 缩小，'reset' 重置 */
   resize: (dir) => ipcRenderer.send('pet:resize', dir),
 
+  /** 聊天对话框：自定义大小（w/h 像素，右下角拖拽触发） */
+  resizeChat: (w, h) => ipcRenderer.send('chat:resize', { w, h }),
+
+  /** 聊天对话框：恢复默认大小 */
+  resetChatSize: () => ipcRenderer.send('chat:reset-size'),
+
   /** 启动鼠标悬停检测，监听鼠标进出窗口 */
   startHoverWatch: () => ipcRenderer.invoke('pet:hover-watch'),
   onHoverChange: (cb) => ipcRenderer.on('pet:hover-state', (e, inside) => cb(inside)),
