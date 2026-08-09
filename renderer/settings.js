@@ -25,6 +25,59 @@
   }
   navItems.forEach((b) => b.addEventListener('click', () => showPanel(b.dataset.panel)));
 
+  /* ---------- 主题色调（显示面板） ---------- */
+
+  const THEME_PRESETS = [
+    { hex: '#e8a0bf', name: '蕾米粉' },
+    { hex: '#b08ae8', name: '薰衣草紫' },
+    { hex: '#8ab8e8', name: '天空蓝' },
+    { hex: '#7ad0d0', name: '薄荷青' },
+    { hex: '#8ad8b0', name: '薄荷绿' },
+    { hex: '#f0b07a', name: '蜜橙' },
+    { hex: '#e88a8a', name: '珊瑚红' },
+    { hex: '#e8cf8a', name: '暖金' },
+  ];
+
+  const themePalette = document.getElementById('theme-palette');
+  const themeCustomInput = document.getElementById('theme-custom-input');
+  let currentTheme = '#e8a0bf';
+
+  function renderThemePalette() {
+    themePalette.innerHTML = '';
+    THEME_PRESETS.forEach((p) => {
+      const b = document.createElement('button');
+      b.className = 'theme-swatch' + (p.hex.toLowerCase() === currentTheme.toLowerCase() ? ' active' : '');
+      b.style.background = p.hex;
+      b.title = p.name + '（' + p.hex + '）';
+      b.addEventListener('click', () => window.pet.setTheme(p.hex));
+      themePalette.appendChild(b);
+    });
+  }
+
+  themeCustomInput.addEventListener('input', () => {
+    window.pet.setTheme(themeCustomInput.value);
+  });
+
+  // 高亮当前主题（从主进程读取），同时同步取色器值
+  async function loadCurrentTheme() {
+    try {
+      const hex = await window.pet.getTheme();
+      if (hex && /^#[0-9a-fA-F]{6}$/.test(hex)) {
+        currentTheme = hex.toLowerCase();
+        themeCustomInput.value = currentTheme;
+        renderThemePalette();
+      }
+    } catch (e) { /* ignore */ }
+  }
+  // 主题变化（本窗口点选 / 广播）→ 刷新高亮与取色器
+  window.pet.onThemeChange((hex) => {
+    if (hex && /^#[0-9a-fA-F]{6}$/.test(hex)) {
+      currentTheme = hex.toLowerCase();
+      themeCustomInput.value = currentTheme;
+      renderThemePalette();
+    }
+  });
+
   /* ---------- 姿势折叠子菜单 ---------- */
 
   const fold = document.getElementById('pose-fold');
@@ -718,6 +771,7 @@
     pollReminder();
     loadUserName();
     loadCompanionStats();
+    loadCurrentTheme();
     try {
       const skins = await window.pet.getSkins();
       buildPoseGrid(skins);

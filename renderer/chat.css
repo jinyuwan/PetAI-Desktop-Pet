@@ -1,8 +1,13 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --accent: #e8a0bf;
-  --accent-deep: #c96a93;
+  --accent: #e8a0bf;            /* 主色（主题功能可覆盖） */
+  --accent-rgb: 232, 160, 191;  /* 主色 RGB 分量，用于 rgba(var(--accent-rgb), a) */
+  --accent-deep: #c96a93;       /* 深色变体（渐变 / 强调） */
+  --accent-deep-rgb: 201, 106, 147;
+  --accent-bright: #ffd9ea;     /* 浅色强调文字 */
+  --accent-bright-rgb: 255, 217, 234;
+  --accent-text: #2d1526;       /* 主色背景上的文字色 */
   --panel-bg: rgba(26, 16, 40, 0.94);
   --panel-border: rgba(255, 255, 255, 0.16);
   --text: #f6ecf5;
@@ -57,7 +62,7 @@ body {
   width: 140px;
   height: 140px;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(232, 160, 191, 0.25), transparent 70%);
+  background: radial-gradient(circle, rgba(var(--accent-rgb), 0.25), transparent 70%);
   pointer-events: none;
 }
 
@@ -80,9 +85,9 @@ body {
   font-weight: 600;
 }
 .new-session-btn {
-  border: 1px solid rgba(232, 160, 191, 0.35);
-  background: rgba(232, 160, 191, 0.14);
-  color: #ffd9ea;
+  border: 1px solid rgba(var(--accent-rgb), 0.35);
+  background: rgba(var(--accent-rgb), 0.14);
+  color: var(--accent-bright);
   font-size: 11px;
   font-family: inherit;
   letter-spacing: 1px;
@@ -92,7 +97,7 @@ body {
   transition: all 0.15s ease;
 }
 .new-session-btn:hover {
-  background: rgba(232, 160, 191, 0.32);
+  background: rgba(var(--accent-rgb), 0.32);
   color: #fff;
 }
 .toolbar-actions {
@@ -150,8 +155,8 @@ body {
 }
 .msg.bot {
   align-self: flex-start;
-  background: rgba(232, 160, 191, 0.16);
-  border: 1px solid rgba(232, 160, 191, 0.24);
+  background: rgba(var(--accent-rgb), 0.16);
+  border: 1px solid rgba(var(--accent-rgb), 0.24);
   color: #fdeef6;
   border-bottom-left-radius: 5px;
 }
@@ -184,8 +189,8 @@ body {
   justify-content: center;
 }
 .attach-btn:hover {
-  background: rgba(232, 160, 191, 0.2);
-  border-color: rgba(232, 160, 191, 0.4);
+  background: rgba(var(--accent-rgb), 0.2);
+  border-color: rgba(var(--accent-rgb), 0.4);
 }
 /* 识屏按钮：紫色系强调 */
 #capture-btn {
@@ -213,8 +218,8 @@ body {
   color: var(--text-dim);
 }
 .chat-input:focus {
-  border-color: rgba(232, 160, 191, 0.55);
-  box-shadow: 0 0 0 3px rgba(232, 160, 191, 0.15);
+  border-color: rgba(var(--accent-rgb), 0.55);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.15);
 }
 .chat-send {
   flex-shrink: 0;
@@ -222,7 +227,7 @@ body {
   border: none;
   border-radius: 12px;
   background: linear-gradient(135deg, var(--accent), var(--accent-deep));
-  color: #3d1630;
+  color: var(--accent-text);
   font-size: 13px;
   font-weight: 600;
   font-family: inherit;
@@ -251,7 +256,7 @@ body {
   height: 64px;
   object-fit: cover;
   border-radius: 12px;
-  border: 1px solid rgba(232, 160, 191, 0.45);
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 .attach-remove {

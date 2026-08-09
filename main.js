@@ -42,7 +42,7 @@ const companionFile = () => path.join(app.getPath('userData'), 'companion.json')
 const prefsFile = () => path.join(app.getPath('userData'), 'prefs.json');
 
 let companion = { firstSeen: Date.now(), lastSeen: Date.now(), interactions: 0, chats: 0 };
-let prefs = { userName: '', chatSize: null, lastUpdatePrompted: '' };
+let prefs = { userName: '', chatSize: null, lastUpdatePrompted: '', theme: '#e8a0bf' };
 
 function loadCompanion() {
   try {
@@ -72,6 +72,9 @@ function loadPrefs() {
     }
     if (raw && typeof raw.lastUpdatePrompted === 'string') {
       prefs.lastUpdatePrompted = raw.lastUpdatePrompted.slice(0, 20);
+    }
+    if (raw && typeof raw.theme === 'string' && /^#[0-9a-fA-F]{6}$/.test(raw.theme)) {
+      prefs.theme = raw.theme.toLowerCase();
     }
   } catch (e) { /* 默认 */ }
   return prefs;
@@ -111,6 +114,20 @@ ipcMain.handle('prefs:get', () => prefs);
 ipcMain.on('prefs:set', (e, payload) => {
   prefs.userName = (payload && typeof payload.userName === 'string' ? payload.userName : '').trim().slice(0, 20);
   savePrefs();
+});
+
+/* ---------- 主题色调（主色 hex，持久化于 prefs，广播到所有窗口） ---------- */
+
+ipcMain.handle('theme:get', () => prefs.theme);
+
+ipcMain.on('theme:set', (e, hex) => {
+  if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+  prefs.theme = hex.toLowerCase();
+  savePrefs();
+  const payload = prefs.theme;
+  [win, chatWin, settingsWin].forEach((w) => {
+    if (w && !w.isDestroyed()) w.webContents.send('theme:changed', payload);
+  });
 });
 
 /* ---------- 窗口基础尺寸（保持 400:560 比例） ---------- */

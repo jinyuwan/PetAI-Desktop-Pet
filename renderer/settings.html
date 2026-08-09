@@ -76,6 +76,19 @@
             </div>
             <button class="reset-size-btn" id="btn-reset-size">重置</button>
           </div>
+
+          <!-- 主题色调 -->
+          <div class="theme-section">
+            <div class="row-info">
+              <span class="row-title">主题色调</span>
+              <span class="row-desc">自定义蕾米的整体配色，实时应用到对话框 / 设置 / 手柄</span>
+            </div>
+            <div class="theme-palette" id="theme-palette"></div>
+            <label class="theme-custom">
+              <input type="color" id="theme-custom-input" value="#e8a0bf" title="选择任意颜色">
+              <span class="theme-custom-label">自定义…</span>
+            </label>
+          </div>
         </div>
 
         <!-- AI 配置 -->
@@ -331,6 +344,7 @@
     </footer>
   </main>
 
+  <script src="theme.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

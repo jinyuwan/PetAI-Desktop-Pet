@@ -158,6 +158,15 @@ contextBridge.exposeInMainWorld('pet', {
   /** 偏好：保存（{ userName }） */
   setPrefs: (prefs) => ipcRenderer.send('prefs:set', prefs),
 
+  /** 主题：读取当前主色（#rrggbb） */
+  getTheme: () => ipcRenderer.invoke('theme:get'),
+
+  /** 主题：设置主色（#rrggbb），保存并广播到所有窗口 */
+  setTheme: (hex) => ipcRenderer.send('theme:set', hex),
+
+  /** 主题：监听主色变化（所有窗口实时应用） */
+  onThemeChange: (cb) => ipcRenderer.on('theme:changed', (e, hex) => cb(hex)),
+
   /** 自动更新：检查 GitHub 最新版本（返回 { ok, hasUpdate, latest, current, url, name, size }） */
   checkUpdate: () => ipcRenderer.invoke('update:check'),
 
