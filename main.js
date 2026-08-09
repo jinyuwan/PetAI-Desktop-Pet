@@ -910,7 +910,11 @@ ipcMain.on('skins:set-active', (e, skinId) => {
   if (typeof skinId !== 'string') return;
   prefs.skinId = skinId.slice(0, 64);
   savePrefs();
-  if (win && !win.isDestroyed()) win.webContents.send('skin:changed', prefs.skinId);
+  // 广播给所有窗口：宠物窗口重载皮肤，设置窗口刷新高亮与姿势列表
+  const payload = prefs.skinId;
+  [win, chatWin, settingsWin].forEach((w) => {
+    if (w && !w.isDestroyed()) w.webContents.send('skin:changed', payload);
+  });
 });
 
 /* ---------- skin:// 协议：服务外部皮肤文件 ---------- */

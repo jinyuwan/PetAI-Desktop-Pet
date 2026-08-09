@@ -14,6 +14,7 @@
 
   let player = null;       // spine-player 实例
   let currentSkin = null;  // 当前皮肤元数据
+  let skinLoadToken = 0;   // 皮肤加载序列号：连续切换时丢弃迟到的旧回调
   let currentState = 'idle';
   let autoPose = true;     // 跟随 AI：自动模式（与设置窗口同步）
   let isSleeping = false;  // 打盹中（长时间无互动）
@@ -153,12 +154,30 @@
     currentSkin = skin;
 
     try {
+      // 关键：切换皮肤前销毁旧播放器实例并清空容器。
+      // 注意：spine-player 4.2 的销毁方法是 dispose()，没有 destroy()！
+      // 用 destroy() 判断永远为 false → 旧实例泄漏（rAF 循环 + WebGL 纹理/上下文不释放），
+      // 连续切换后 WebGL 上下文耗尽，新皮肤创建失败
+      if (player) {
+        try {
+          if (typeof player.dispose === 'function') player.dispose();
+          else if (typeof player.destroy === 'function') player.destroy();
+        } catch (e) { /* ignore */ }
+        player = null;
+      }
+      if (playerEl) playerEl.innerHTML = '';
+
+      // 连续切换保护：每次加载生成新 token，
+      // 旧加载的 success/error 回调若 token 不匹配则丢弃，避免旧实例覆盖新实例
+      const token = ++skinLoadToken;
+      const _skin = skin;
+
       // skin://local/<id>/<file>：由主进程 skin 协议从外部皮肤目录（或内置目录）读取
-      const skinUrl = (file) => 'skin://local/' + encodeURIComponent(skin.id) + '/' + file;
-      player = new spine.SpinePlayer(playerEl, {
-        jsonUrl: skinUrl(skin.spine.skeleton),
-        atlasUrl: skinUrl(skin.spine.atlas),
-        pngUrl: skinUrl(skin.spine.png),
+      const skinUrl = (file) => 'skin://local/' + encodeURIComponent(_skin.id) + '/' + file;
+      const p = new spine.SpinePlayer(playerEl, {
+        jsonUrl: skinUrl(_skin.spine.skeleton),
+        atlasUrl: skinUrl(_skin.spine.atlas),
+        pngUrl: skinUrl(_skin.spine.png),
         animation: resolveAnimation('idle'),
         skin: undefined,
         backgroundColor: '#00000000',
@@ -166,14 +185,24 @@
         showControls: false,
         showLoading: true,
         viewport: { padLeft: '4%', padRight: '4%', padTop: '2%', padBottom: '4%' },
-        success: (p) => {
-          player = p;
+        success: (instance) => {
+          if (token !== skinLoadToken) {
+            // 已被更新的切换打断：销毁这次迟到的实例，不覆盖 player
+            try {
+              if (typeof instance.dispose === 'function') instance.dispose();
+              else if (typeof instance.destroy === 'function') instance.destroy();
+            } catch (e) { /* ignore */ }
+            return;
+          }
+          player = instance;
           setState('idle');
         },
-        error: (p, reason) => {
+        error: (instance, reason) => {
+          if (token !== skinLoadToken) return; // 迟到的失败回调，忽略
           showTip('皮肤加载失败：' + (reason && reason.message ? reason.message : reason));
         },
       });
+      player = p; // 立即持有（供 setState 兜底），真正就绪以 success 为准
     } catch (e) {
       showTip('皮肤初始化异常：' + e.message);
     }
