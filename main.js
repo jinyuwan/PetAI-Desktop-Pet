@@ -2,11 +2,17 @@
  * AI 桌面宠物 — Electron 主进程
  * 职责：透明悬浮窗、置顶、系统原生拖拽、皮肤目录扫描、状态机 IPC
  */
-const { app, BrowserWindow, ipcMain, Menu, screen, Tray, nativeImage, desktopCapturer, shell, Notification, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, screen, Tray, nativeImage, desktopCapturer, shell, Notification, dialog, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const { pathToFileURL } = require('url');
+
+// 皮肤协议：允许渲染层从外部皮肤目录加载文件（必须在 app ready 前注册）
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'skin', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+]);
 
 let win = null;
 let hoverTimer = null;
@@ -770,38 +776,93 @@ ipcMain.handle('screen:capture', async () => {
 
 /* ---------- 皮肤加载器 ---------- */
 
+/**
+ * 候选皮肤目录（优先级从高到低）：
+ * 1. %APPDATA%/desktop-pet/skins  ← 用户自定义皮肤的标准位置，安装版也能用
+ * 2. 安装目录旁的 skins/          ← 便携版 / 免安装版场景
+ * 3. 应用内置 skins/              ← 随安装包分发的默认皮肤
+ */
+function skinDirs() {
+  const dirs = [];
+  dirs.push(path.join(app.getPath('userData'), 'skins'));
+  const exeDir = path.dirname(app.getPath('exe'));
+  if (exeDir) dirs.push(path.join(exeDir, 'skins'));
+  dirs.push(path.join(__dirname, 'skins'));
+  return dirs;
+}
+
 function loadSkins() {
-  const skinsDir = path.join(__dirname, 'skins');
   const result = [];
-  if (!fs.existsSync(skinsDir)) return result;
-  for (const name of fs.readdirSync(skinsDir)) {
-    const dir = path.join(skinsDir, name);
-    if (!fs.statSync(dir).isDirectory()) continue;
-    const jsonPath = path.join(dir, 'skin.json');
-    if (!fs.existsSync(jsonPath)) continue;
+  const seen = new Set(); // 同名皮肤只取优先级最高的一个
+  for (const dir of skinDirs()) {
+    if (!fs.existsSync(dir)) continue;
+    let entries;
     try {
-      const meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-      const spine = meta.spine || {};
-      const assetOk = ['skeleton', 'atlas', 'png'].every((k) => spine[k] && fs.existsSync(path.join(dir, spine[k])));
-      if (!assetOk) continue;
-      result.push({
-        id: name,
-        name: meta.name || name,
-        author: meta.author || '',
-        version: meta.version || '1.0',
-        source: meta.source || '',
-        states: meta.states || {},
-        extraStates: meta.extraStates || {},
-        spine,
-      });
+      entries = fs.readdirSync(dir);
     } catch (e) {
-      console.warn('[skins] 跳过损坏皮肤:', name, e.message);
+      continue;
+    }
+    for (const name of entries) {
+      const d = path.join(dir, name);
+      if (!fs.statSync(d).isDirectory()) continue;
+      if (seen.has(name)) continue;
+      const jsonPath = path.join(d, 'skin.json');
+      if (!fs.existsSync(jsonPath)) continue;
+      try {
+        const meta = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+        const spine = meta.spine || {};
+        const assetOk = ['skeleton', 'atlas', 'png'].every((k) => spine[k] && fs.existsSync(path.join(d, spine[k])));
+        if (!assetOk) continue;
+        result.push({
+          id: name,
+          name: meta.name || name,
+          author: meta.author || '',
+          version: meta.version || '1.0',
+          source: meta.source || '',
+          states: meta.states || {},
+          extraStates: meta.extraStates || {},
+          spine,
+        });
+        seen.add(name);
+      } catch (e) {
+        console.warn('[skins] 跳过损坏皮肤:', name, e.message);
+      }
     }
   }
   return result;
 }
 
 ipcMain.handle('skins:list', () => loadSkins());
+
+/* ---------- skin:// 协议：服务外部皮肤文件 ---------- */
+
+/** 解析 skin://local/<id>/<file> 为磁盘文件路径（带路径穿越防护） */
+function resolveSkinFile(urlStr) {
+  const u = new URL(urlStr);
+  const parts = u.pathname.split('/').filter(Boolean).map((s) => decodeURIComponent(s));
+  if (!parts.length) return null;
+  const id = parts[0];
+  const rel = parts.slice(1).join('/');
+  if (!rel || rel.split(/[\\/]/).some((seg) => seg === '..' || seg === '.')) return null;
+  for (const dir of skinDirs()) {
+    const p = path.join(dir, id, rel);
+    try {
+      if (fs.existsSync(p) && fs.statSync(p).isFile()) return p;
+    } catch (e) { /* ignore */ }
+  }
+  return null;
+}
+
+/** 注册皮肤协议处理器（app ready 后调用） */
+function registerSkinProtocol() {
+  protocol.handle('skin', (request) => {
+    try {
+      const file = resolveSkinFile(request.url);
+      if (file) return net.fetch(pathToFileURL(file).toString());
+    } catch (e) { /* fallthrough */ }
+    return new Response('Not Found', { status: 404 });
+  });
+}
 
 /* ---------- 定时提醒 & 番茄钟 ---------- */
 
@@ -1347,6 +1408,7 @@ app.whenReady().then(() => {
   loadPrefs();
   loadReminders();
   cleanupStaleUpdates(); // 清理上次更新残留的临时安装包
+  registerSkinProtocol(); // skin:// 协议：支持从外部目录加载皮肤
   startReminderWatch();
   createWindow();
   createChatWindow();

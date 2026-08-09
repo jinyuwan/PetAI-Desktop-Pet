@@ -32,11 +32,23 @@ npm start
 
 ### 皮肤说明
 
-应用通过 `skins/<name>/skin.json` 加载皮肤。由于版权原因本仓库不含皮肤素材，你需要自己准备：
+应用按以下顺序查找皮肤目录（同名皮肤优先用高优先级目录）：
 
-1. 创建目录 `skins/<你的皮肤名>/`
-2. 放入 Spine 导出文件：`skeleton.json`、`atlas`、`png`
-3. 编写 `skin.json`（示例）：
+1. `%APPDATA%/desktop-pet/skins/` — **用户自定义皮肤的标准位置**（安装版也能用）
+2. 安装目录旁的 `skins/`（便携版 / 免安装版场景）
+3. 应用内置 `skins/`（随安装包分发）
+
+每个皮肤是独立文件夹，结构如下：
+
+```
+skins/<皮肤名>/
+├─ skin.json          # 皮肤元数据（名称 / 状态映射）
+├─ xxx-skeleton.json  # Spine 骨架
+├─ xxx.atlas          # Spine 图集
+└─ xxx.png            # Spine 贴图
+```
+
+`skin.json` 示例：
 
 ```json
 {
@@ -56,7 +68,7 @@ npm start
 }
 ```
 
-4. 如无皮肤，应用会提示"未找到皮肤"（代码逻辑在 `renderer/app.js`，可自行替换为其他渲染方案）
+放好后重启应用即可加载；如无皮肤，应用会提示"未找到皮肤"（代码逻辑在 `renderer/app.js`，可自行替换为其他渲染方案）。
 
 ## ⚙️ AI 配置
 

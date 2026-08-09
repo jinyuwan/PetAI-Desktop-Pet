@@ -153,10 +153,12 @@
     currentSkin = skin;
 
     try {
+      // skin://local/<id>/<file>：由主进程 skin 协议从外部皮肤目录（或内置目录）读取
+      const skinUrl = (file) => 'skin://local/' + encodeURIComponent(skin.id) + '/' + file;
       player = new spine.SpinePlayer(playerEl, {
-        jsonUrl: '../skins/' + skin.id + '/' + skin.spine.skeleton,
-        atlasUrl: '../skins/' + skin.id + '/' + skin.spine.atlas,
-        pngUrl: '../skins/' + skin.id + '/' + skin.spine.png,
+        jsonUrl: skinUrl(skin.spine.skeleton),
+        atlasUrl: skinUrl(skin.spine.atlas),
+        pngUrl: skinUrl(skin.spine.png),
         animation: resolveAnimation('idle'),
         skin: undefined,
         backgroundColor: '#00000000',
