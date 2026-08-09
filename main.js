@@ -1025,15 +1025,19 @@ async function fetchLatestRelease() {
   }
 }
 
-/** 尝试获取 latest.yml 中的 sha512 用于下载校验（拿不到则返回空串，不阻塞更新） */
+/** 尝试获取 latest.yml 中的 sha512（base64）并转为 hex 用于下载校验；拿不到则返回空串，不阻塞更新 */
 async function fetchSha512(asset) {
   try {
     const ymlUrl = asset.browser_download_url.replace(/[^/]+$/, 'latest.yml');
     const resp = await fetch(ymlUrl, { headers: { 'User-Agent': 'PetAI-Desktop-Pet' } });
     if (!resp.ok) return '';
     const text = await resp.text();
-    const m = text.match(/sha512:\s*"?([A-Fa-f0-9]{128})"?/);
-    return m ? m[1].toLowerCase() : '';
+    // electron-builder 的 latest.yml：sha512 为 base64 编码（64 字节哈希）
+    const m = text.match(/sha512:\s*"?([^"\s]+)"?/);
+    if (!m || !/^[A-Za-z0-9+/=]+$/.test(m[1])) return '';
+    const buf = Buffer.from(m[1], 'base64');
+    if (buf.length !== 64) return '';
+    return buf.toString('hex');
   } catch (e) {
     return '';
   }
