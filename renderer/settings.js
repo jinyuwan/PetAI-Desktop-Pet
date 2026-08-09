@@ -390,16 +390,21 @@
     window.pet.getAppInfo().then((info) => {
       document.getElementById('app-about-name').textContent = info.name || 'PetAI';
       document.getElementById('app-about-desc').textContent = info.description || 'AI 桌面宠物';
+      document.getElementById('app-about-version').textContent = 'v' + (info.version || '—');
       const rows = [
-        ['版本', info.version || '—'],
         ['作者', info.author || '—'],
         ['主页', info.homepage || '—'],
       ];
       const aboutAppInfo = document.getElementById('about-app-info');
-      aboutAppInfo.innerHTML = rows.map(([label, value]) =>
-        '<div class="about-row"><span class="about-label">' + label + '</span>' +
-        '<span class="about-value about-value-link">' + value + '</span></div>'
-      ).join('');
+      // 只重建作者 / 主页行；版本行（含更新按钮）保持原位，避免丢失点击事件
+      Array.from(aboutAppInfo.querySelectorAll('.about-row:not(.about-row-version)')).forEach((el) => el.remove());
+      rows.forEach(([label, value]) => {
+        const div = document.createElement('div');
+        div.className = 'about-row';
+        div.innerHTML = '<span class="about-label">' + label + '</span>' +
+          '<span class="about-value about-value-link">' + value + '</span>';
+        aboutAppInfo.appendChild(div);
+      });
       // 主页行可点击，在浏览器打开 GitHub 主页
       const homepageRow = aboutAppInfo.children[2];
       if (homepageRow) {
@@ -415,6 +420,63 @@
       console.warn('[settings] 应用信息读取失败:', e.message);
     });
   }
+
+  /* ---------- 自动更新 ---------- */
+
+  const updateBtn = document.getElementById('btn-update');
+  let updateInfo = null; // 最近一次检查结果
+
+  function setUpdateBtn(text, opts) {
+    opts = opts || {};
+    updateBtn.textContent = text;
+    updateBtn.disabled = !!opts.disabled;
+    updateBtn.className = 'update-btn' + (opts.cls ? ' ' + opts.cls : '');
+    if (opts.title) updateBtn.title = opts.title;
+  }
+
+  /** 检查 GitHub 最新版本并更新按钮状态 */
+  async function checkUpdate() {
+    setUpdateBtn('检查中…', { disabled: true });
+    try {
+      const r = await window.pet.checkUpdate();
+      if (!r || !r.ok) {
+        setUpdateBtn('检查更新', { title: (r && r.message) || '检查失败' });
+        return;
+      }
+      updateInfo = r;
+      if (r.hasUpdate) {
+        setUpdateBtn('下载 v' + r.latest, { cls: 'has-update', title: '发现新版本 v' + r.latest + '，点击下载并自动安装' });
+      } else {
+        setUpdateBtn('已是最新', { disabled: true });
+        setTimeout(() => setUpdateBtn('检查更新'), 2500);
+      }
+    } catch (e) {
+      setUpdateBtn('检查更新', { title: '检查失败：' + (e && e.message) });
+    }
+  }
+
+  updateBtn.addEventListener('click', () => {
+    if (updateInfo && updateInfo.hasUpdate && updateInfo.url) {
+      // 有新版：开始下载
+      updateBtn.disabled = true;
+      updateBtn.classList.add('downloading');
+      updateBtn.textContent = '下载中 0%';
+      window.pet.downloadUpdate(updateInfo.url);
+    } else {
+      checkUpdate();
+    }
+  });
+
+  window.pet.onUpdateProgress((pct) => {
+    updateBtn.textContent = '下载中 ' + pct + '%';
+  });
+  window.pet.onUpdateDone(() => {
+    setUpdateBtn('安装中…', { disabled: true });
+  });
+  window.pet.onUpdateError((msg) => {
+    setUpdateBtn('下载失败', { title: msg });
+    setTimeout(() => setUpdateBtn('检查更新'), 3000);
+  });
 
   /* ---------- 提醒面板（番茄钟 + 每日闹钟） ---------- */
 

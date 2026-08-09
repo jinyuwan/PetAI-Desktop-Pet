@@ -152,6 +152,21 @@ contextBridge.exposeInMainWorld('pet', {
   /** 偏好：保存（{ userName }） */
   setPrefs: (prefs) => ipcRenderer.send('prefs:set', prefs),
 
+  /** 自动更新：检查 GitHub 最新版本（返回 { ok, hasUpdate, latest, current, url, name, size }） */
+  checkUpdate: () => ipcRenderer.invoke('update:check'),
+
+  /** 自动更新：下载最新安装包并静默安装（url 来自 checkUpdate） */
+  downloadUpdate: (url) => ipcRenderer.send('update:download', { url }),
+
+  /** 自动更新：监听下载进度（0-100） */
+  onUpdateProgress: (cb) => ipcRenderer.on('update:progress', (e, pct) => cb(pct)),
+
+  /** 自动更新：监听下载完成（随后自动静默安装并重启） */
+  onUpdateDone: (cb) => ipcRenderer.on('update:done', (e, p) => cb(p)),
+
+  /** 自动更新：监听下载失败 */
+  onUpdateError: (cb) => ipcRenderer.on('update:error', (e, msg) => cb(msg)),
+
   /** 睡眠检测：宠物窗口监听空闲分钟数推送 */
   onIdleTick: (cb) => ipcRenderer.on('pet:idle-tick', (e, payload) => cb(payload)),
 

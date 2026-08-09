@@ -1158,6 +1158,56 @@ body {
 .about-row-clickable:hover {
   background: rgba(232, 160, 191, 0.1);
 }
+/* 版本行 + 自动更新按钮 */
+.about-row-version {
+  align-items: center;
+}
+.about-version-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.about-version-wrap .about-value {
+  color: var(--text);
+  user-select: text;
+}
+.update-btn {
+  flex-shrink: 0;
+  border: 1px solid rgba(232, 160, 191, 0.4);
+  background: rgba(232, 160, 191, 0.1);
+  color: #ffd9ea;
+  font-size: 11px;
+  font-family: inherit;
+  letter-spacing: 1px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.update-btn:hover:not(:disabled) {
+  background: rgba(232, 160, 191, 0.26);
+}
+.update-btn:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+.update-btn.has-update {
+  background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+  color: #3d1630;
+  font-weight: 600;
+  border-color: transparent;
+  letter-spacing: 0.5px;
+}
+.update-btn.has-update:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.update-btn.downloading {
+  background: rgba(232, 160, 191, 0.3);
+  border-color: rgba(232, 160, 191, 0.6);
+  color: #fff;
+  letter-spacing: 0.5px;
+}
 .app-repo-btn {
   display: flex;
   align-items: center;

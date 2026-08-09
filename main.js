@@ -5,6 +5,7 @@
 const { app, BrowserWindow, ipcMain, Menu, screen, Tray, nativeImage, desktopCapturer, shell, Notification } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { spawn } = require('child_process');
 
 let win = null;
 let hoverTimer = null;
@@ -896,6 +897,95 @@ ipcMain.on('app:open-external', (e, url) => {
 ipcMain.on('app:quit', () => {
   isQuitting = true;
   app.quit();
+});
+
+/* ---------- 自动更新（GitHub Releases） ---------- */
+
+const REPO_API = 'https://api.github.com/repos/jinyuwan/PetAI-Desktop-Pet';
+
+/** 比较语义化版本号：a > b 返回 1，相等返回 0，a < b 返回 -1 */
+function compareVersions(a, b) {
+  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const x = pa[i] || 0;
+    const y = pb[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
+/** 检查 GitHub 最新 Release：返回 { ok, hasUpdate, latest, current, url, name, size } */
+ipcMain.handle('update:check', async () => {
+  try {
+    const resp = await fetch(REPO_API + '/releases/latest', {
+      headers: { 'User-Agent': 'PetAI-Desktop-Pet' },
+    });
+    if (resp.status === 404) return { ok: false, message: '仓库暂无发布版本' };
+    if (!resp.ok) return { ok: false, message: '检查失败（HTTP ' + resp.status + '）' };
+    const rel = await resp.json();
+    const latest = String(rel.tag_name || '').replace(/^v/i, '');
+    const asset = (rel.assets || []).find((a) => /\.exe$/i.test(a.name));
+    if (!latest || !asset) return { ok: false, message: '最新版本缺少安装包' };
+    const current = app.getVersion();
+    return {
+      ok: true,
+      hasUpdate: compareVersions(latest, current) > 0,
+      latest,
+      current,
+      url: asset.browser_download_url,
+      name: asset.name,
+      size: asset.size || 0,
+    };
+  } catch (e) {
+    return { ok: false, message: '网络错误：' + (e.message || String(e)) };
+  }
+});
+
+let updateDownloading = false; // 防止重复下载
+
+/** 下载最新安装包到临时目录，完成后静默安装并退出（NSIS /S 覆盖旧版本） */
+ipcMain.on('update:download', async (e, payload) => {
+  if (updateDownloading) return;
+  const sender = e.sender;
+  if (!payload || typeof payload.url !== 'string') return;
+  updateDownloading = true;
+  const file = path.join(app.getPath('temp'), 'petai-update-' + Date.now() + '.exe');
+  try {
+    const resp = await fetch(payload.url, { headers: { 'User-Agent': 'PetAI-Desktop-Pet' } });
+    if (!resp.ok || !resp.body) throw new Error('下载失败（HTTP ' + resp.status + '）');
+    const total = Number(resp.headers.get('content-length')) || 0;
+    const reader = resp.body.getReader();
+    const ws = fs.createWriteStream(file);
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      ws.write(Buffer.from(value));
+      received += value.length;
+      if (total && sender && !sender.isDestroyed()) {
+        sender.send('update:progress', Math.min(99, Math.round((received / total) * 100)));
+      }
+    }
+    // 等待写入全部落盘再启动安装器
+    await new Promise((resolve, reject) => {
+      ws.on('finish', resolve);
+      ws.on('error', reject);
+      ws.end();
+    });
+    if (sender && !sender.isDestroyed()) sender.send('update:done', { file });
+    // /S 静默安装 + --updated 标记：覆盖旧版本，安装完成后自动启动新版本
+    const proc = spawn(file, ['/S', '--updated'], { detached: true, stdio: 'ignore' });
+    proc.unref();
+    isQuitting = true;
+    setTimeout(() => app.quit(), 800); // 给安装器一点启动时间再退出
+  } catch (err) {
+    try { fs.unlinkSync(file); } catch (e) { /* ignore */ }
+    if (sender && !sender.isDestroyed()) sender.send('update:error', err.message || String(err));
+  } finally {
+    updateDownloading = false;
+  }
 });
 
 /* ---------- 鼠标悬停检测（drag 区域不触发 CSS hover，改用主进程轮询） ---------- */
