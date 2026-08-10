@@ -104,6 +104,9 @@ contextBridge.exposeInMainWorld('pet', {
   /** 关闭设置窗口 */
   closeSettings: () => ipcRenderer.send('settings:close'),
 
+  /** 设置窗口：恢复默认大小（520 × 620） */
+  resetSettingsSize: () => ipcRenderer.send('settings:reset-size'),
+
   /** 切换宠物姿势（设置窗口 → 主进程 → 宠物窗口） */
   setPose: (state) => ipcRenderer.send('pet:set-pose', state),
 

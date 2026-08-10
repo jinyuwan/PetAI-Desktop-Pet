@@ -34,43 +34,70 @@
   }
 
   /* ---------- 自主动作调度器（让宠物"活"起来） ---------- */
-  // 空闲时按权重随机播放小动作，动作结束后自然回归 idle。
+  // 空闲时按权重随机播放小动作，动作结束后自然回归基准姿态。
   // 所有自动切换都走 setState（非 manual），手动锁定模式（autoPose=false）下自动被忽略。
 
-  /** 动作表：状态名 / 权重 / 播放时长范围（秒） */
-  const ACTIONS = [
-    { state: 'idle', weight: 40, min: 8, max: 20 },     // 发呆（基底）
-    { state: 'thinking', weight: 24, min: 5, max: 13 }, // 思考
-    { state: 'reading', weight: 15, min: 5, max: 13 },  // 看书
-    { state: 'planning', weight: 11, min: 4, max: 11 }, // 准备计划
-    { state: 'working', weight: 10, min: 6, max: 16 },  // 工作中
-  ];
+  /* ---------- 姿态解析（姿态名由皮肤自定义，无内置默认姿态） ---------- */
 
-  let actionTimer = null;      // 动作调度定时器
-  let actionHoldTimer = null;  // 动作保持定时器（到点回 idle）
-  let interactionLock = 0;     // 交互锁定截止时间戳（对话/点击期间不自动动作）
-
-  /** 按权重随机选一个动作 */
-  function pickAction() {
-    const total = ACTIONS.reduce((s, a) => s + a.weight, 0);
-    let r = Math.random() * total;
-    for (const a of ACTIONS) {
-      r -= a.weight;
-      if (r <= 0) return a;
-    }
-    return ACTIONS[0];
+  /** 当前皮肤的全部姿态名（states + extraStates 合并去重，保持声明顺序） */
+  function getPoseNames() {
+    const s = currentSkin || {};
+    const out = [];
+    const seen = {};
+    [s.states, s.extraStates].forEach((map) => {
+      if (!map) return;
+      Object.keys(map).forEach((k) => {
+        if (!seen[k]) { seen[k] = 1; out.push(k); }
+      });
+    });
+    return out;
   }
 
-  /** 播放一个自主动作：持续 min~max 秒后回 idle */
+  /**
+   * 按关键词找姿态：姿态名由皮肤自定义，用语义关键词模糊匹配（不区分大小写）。
+   * 找不到时 fallback 传 'first' 返回第一个姿态，否则返回空串。
+   */
+  function findPose(keywords, fallback) {
+    const poses = getPoseNames();
+    if (!poses.length) return '';
+    for (const kw of keywords) {
+      const hit = poses.find((p) => p.toLowerCase().includes(kw));
+      if (hit) return hit;
+    }
+    return fallback === 'first' ? poses[0] : '';
+  }
+
+  /** 基准姿态：idle 类优先，否则第一个姿态 */
+  function basePose() {
+    return findPose(['idle', 'stand', '待机', '发呆'], 'first');
+  }
+
+  /** 随机动作姿态：优先从非基准姿态里挑，只有一个姿态时就用它 */
+  function randomActionPose() {
+    const poses = getPoseNames();
+    if (!poses.length) return '';
+    const base = basePose();
+    const pool = base ? poses.filter((p) => p !== base) : poses;
+    const list = pool.length ? pool : poses;
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  let actionTimer = null;      // 动作调度定时器
+  let actionHoldTimer = null;  // 动作保持定时器（到点回基准姿态）
+  let interactionLock = 0;     // 交互锁定截止时间戳（对话/点击期间不自动动作）
+
+  /** 播放一个自主动作：随机挑一个姿态，持续 4~13 秒后回基准姿态 */
   function playAction() {
     if (!player || !autoPose) return;
     if (Date.now() < interactionLock) return; // 交互期间不打扰
+    const base = basePose();
+    const act = randomActionPose();
+    if (!act || act === base) return; // 无可换姿态 → 保持现状
     clearTimeout(actionHoldTimer);
-    const a = pickAction();
-    setState(a.state);
-    const holdMs = (a.min + Math.random() * (a.max - a.min)) * 1000;
+    setState(act);
+    const holdMs = 4000 + Math.random() * 9000;
     actionHoldTimer = setTimeout(() => {
-      if (Date.now() >= interactionLock) setState('idle');
+      if (Date.now() >= interactionLock && base) setState(base);
     }, holdMs);
   }
 
@@ -96,12 +123,19 @@
 
   /* ---------- 状态机 ---------- */
 
-  /** 解析某状态对应的动画名：states → extraStates → idle 兜底 */
+  /** 解析某姿态对应的动画名：states → extraStates → 基准姿态 → 第一个姿态 兜底 */
   function resolveAnimation(state) {
     if (!currentSkin) return state;
-    if (currentSkin.states && currentSkin.states[state]) return currentSkin.states[state];
-    if (currentSkin.extraStates && currentSkin.extraStates[state]) return currentSkin.extraStates[state];
-    if (currentSkin.states && currentSkin.states.idle) return currentSkin.states.idle;
+    const maps = [currentSkin.states, currentSkin.extraStates].filter(Boolean);
+    for (const map of maps) {
+      if (map[state]) return map[state];
+    }
+    const base = basePose();
+    if (base) {
+      for (const map of maps) {
+        if (map[base]) return map[base];
+      }
+    }
     return state;
   }
 
@@ -132,10 +166,7 @@
   window.petAPI = {
     setState,
     getState: () => currentState,
-    getAvailableStates: () => {
-      const s = currentSkin || {};
-      return Object.keys(s.states || {}).concat(Object.keys(s.extraStates || {}));
-    },
+    getAvailableStates: () => getPoseNames(),
     /** 发送对话（阶段 2 接入 LLM；当前为占位，供右键输入框调用） */
     sendMessage: (text) => {
       console.log('[pet] 对话消息(待接入AI):', text);
@@ -173,12 +204,13 @@
       const _skin = skin;
 
       // skin://local/<id>/<file>：由主进程 skin 协议从外部皮肤目录（或内置目录）读取
+      // 注意：spine-player 4.2 用 skeleton/atlas 参数（不是 jsonUrl/atlasUrl/pngUrl），
+      // 且 URL 不能带查询参数（否则扩展名破坏，误按二进制解析）
       const skinUrl = (file) => 'skin://local/' + encodeURIComponent(_skin.id) + '/' + file;
       const p = new spine.SpinePlayer(playerEl, {
-        jsonUrl: skinUrl(_skin.spine.skeleton),
-        atlasUrl: skinUrl(_skin.spine.atlas),
-        pngUrl: skinUrl(_skin.spine.png),
-        animation: resolveAnimation('idle'),
+        skeleton: skinUrl(_skin.spine.skeleton),
+        atlas: skinUrl(_skin.spine.atlas),
+        animation: resolveAnimation(basePose() || 'idle'),
         skin: undefined,
         backgroundColor: '#00000000',
         alpha: true,
@@ -195,7 +227,8 @@
             return;
           }
           player = instance;
-          setState('idle');
+          const pose = basePose();
+          if (pose) setState(pose);
         },
         error: (instance, reason) => {
           if (token !== skinLoadToken) return; // 迟到的失败回调，忽略
@@ -217,12 +250,21 @@
     });
   });
 
-  /* ---------- 姿势切换（设置窗口 / AI 对话 → 主进程 → 本窗口） ---------- */
+  /* ---------- 姿态切换（设置窗口 / AI 对话 → 主进程 → 本窗口） ---------- */
   window.pet.onSetPose((state) => {
-    setState(state, { manual: true });
+    // 语义意图（thinking/task_done/idle 等）→ 皮肤自定义姿态名；找不到则用原名（resolveAnimation 兜底）
+    const INTENT_KEYWORDS = {
+      thinking: ['think', '思考', '想'],
+      task_done: ['done', 'win', 'cheer', 'happy', '完成', '开心', '胜利'],
+      idle: ['idle', 'stand', '待机', '发呆'],
+    };
+    const intent = INTENT_KEYWORDS[state];
+    const target = intent ? (findPose(intent) || state) : state;
+    setState(target, { manual: true });
     // AI 对话情绪延续：思考期间锁 30s，完成/开心后锁 12s，期间自主动作不打扰
-    if (state === 'thinking') lockInteraction(30000);
-    else if (state === 'task_done') lockInteraction(12000);
+    const s = String(target || '').toLowerCase();
+    if (/think|思考|想/.test(s)) lockInteraction(30000);
+    else if (/done|win|cheer|happy|完成|开心|胜利/.test(s)) lockInteraction(12000);
   });
 
   // 跟随 AI 模式变化（设置窗口切换）
@@ -241,11 +283,13 @@
     if (!payload) return;
     if (payload.type === 'pomodoro') {
       lockInteraction(9000);
-      setState('task_done');
+      const pose = findPose(['done', 'win', 'cheer', 'happy', '完成', '开心', '胜利']) || basePose();
+      if (pose) setState(pose);
       showBubble('🍅', '番茄钟结束！休息一下吧~', 5000);
     } else {
       lockInteraction(6000);
-      setState('thinking');
+      const pose = findPose(['think', '思考', '想']) || basePose();
+      if (pose) setState(pose);
       showBubble('⏰', payload.label || '时间到啦！', 4500);
     }
   });
@@ -262,13 +306,14 @@
 
   /* ---------- 互动：单击随机触发 / 长按弹出菜单选择 ---------- */
   // 交互按钮位于手柄 no-drag 区域，纯按钮事件不触发窗口拖拽，不会引发放大 bug。
+  // match：语义关键词，触发时在当前皮肤的自定义姿态名里模糊匹配，找不到则随机/基准兜底
   const INTERACTIONS = [
-    { emoji: '♡', label: '摸摸头', state: 'task_done', text: '嘿嘿~ 最喜欢你啦！' },
-    { emoji: '👋', label: '打招呼', state: 'task_done', text: '嗨~ 一直在等你哦！' },
-    { emoji: '✨', label: '撒个娇', state: 'task_done', text: '人家想你了嘛~' },
-    { emoji: '🍬', label: '喂糖果', state: 'task_done', text: '好甜！谢谢你！' },
-    { emoji: '❓', label: '歪头疑惑', state: 'thinking', text: '嗯？你在看什么呀？' },
-    { emoji: '😴', label: '睡觉觉', state: 'reading', text: '呼…好困，小眯一会儿' },
+    { emoji: '♡', label: '摸摸头', match: ['done', 'win', 'cheer', 'happy', '完成', '开心', '胜利'], text: '嘿嘿~ 最喜欢你啦！' },
+    { emoji: '👋', label: '打招呼', match: ['done', 'win', 'cheer', 'happy', 'hi', '打招呼'], text: '嗨~ 一直在等你哦！' },
+    { emoji: '✨', label: '撒个娇', match: ['done', 'win', 'cheer', 'happy', '撒娇'], text: '人家想你了嘛~' },
+    { emoji: '🍬', label: '喂糖果', match: ['done', 'win', 'cheer', 'happy', '吃', '开心'], text: '好甜！谢谢你！' },
+    { emoji: '❓', label: '歪头疑惑', match: ['think', '思考', '想', '疑问', '疑惑', '歪'], text: '嗯？你在看什么呀？' },
+    { emoji: '😴', label: '睡觉觉', match: ['read', '书', '睡', 'zzz', '打盹'], text: '呼…好困，小眯一会儿' },
   ];
 
   const interactBtn = document.getElementById('btn-interact');
@@ -279,9 +324,15 @@
   /** 触发一个交互：播放动作 + 气泡 + 计入陪伴互动 */
   function playInteraction(it) {
     lockInteraction(3200);
-    setState(it.state);
+    const target = findPose(it.match) || randomActionPose() || basePose();
+    if (target) setState(target);
     showBubble(it.emoji, it.text, 2600);
-    setTimeout(() => { if (Date.now() >= interactionLock) setState('idle'); }, 3000);
+    setTimeout(() => {
+      if (Date.now() >= interactionLock) {
+        const base = basePose();
+        if (base) setState(base);
+      }
+    }, 3000);
     if (window.pet && typeof window.pet.logInteraction === 'function') {
       window.pet.logInteraction('interact');
     }
@@ -346,7 +397,8 @@
     if (isSleeping) return;
     isSleeping = true;
     stopAutoActions(); // 打盹期间不自动动作
-    setState('reading');
+    const pose = findPose(['read', '书', '睡', 'zzz', '打盹']) || basePose();
+    if (pose) setState(pose);
     showBubble('💤', '呼…没人陪，小睡一会儿 Zzz', 4000);
   }
 
@@ -354,7 +406,8 @@
     if (!isSleeping) return;
     isSleeping = false;
     if (autoPose) startAutoActions();
-    setState('idle');
+    const pose = basePose();
+    if (pose) setState(pose);
     showBubble('😊', '嗯？你回来啦！', 2200);
   }
 

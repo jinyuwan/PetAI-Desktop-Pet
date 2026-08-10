@@ -156,12 +156,6 @@ const CHAT_MAX_W = 760;
 const CHAT_MAX_H = 620;
 let chatSize = { w: CHAT_W, h: CHAT_H }; // 当前对话框尺寸（自定义后记忆于 prefs）
 
-/** 皮肤规范：白名单标准状态 */
-const STANDARD_STATES = [
-  'idle', 'reading', 'planning', 'thinking',
-  'task_done', 'working', 'work_done',
-];
-
 function createWindow() {
   win = new BrowserWindow({
     width: Math.round(BASE_W * petScale),
@@ -795,51 +789,6 @@ function skinDirs() {
   return dirs;
 }
 
-/** 模糊匹配：把标准状态名映射到皮肤已有的动画名（编辑距离 / 包含关系） */
-function fuzzyMatchAnim(stateName, animNames) {
-  if (!animNames || !animNames.length) return '';
-  const s = stateName.toLowerCase();
-  // 1. 精确匹配
-  if (animNames.includes(s)) return s;
-  // 2. 包含关系：动画名包含状态名，或状态名包含动画名
-  const hit = animNames.find((n) => n.toLowerCase().includes(s) || s.includes(n.toLowerCase()));
-  if (hit) return hit;
-  // 3. 关键词映射：thinking→think, reading→read, working→work...
-  const KEYWORDS = {
-    thinking: ['think', 'idle'],
-    reading: ['read', 'idle'],
-    planning: ['plan', 'idle'],
-    working: ['work', 'run', 'walk'],
-    task_done: ['done', 'win', 'cheer', 'happy', 'idle'],
-    work_done: ['done', 'win', 'cheer', 'happy', 'idle'],
-  };
-  const kw = KEYWORDS[s];
-  if (kw) {
-    const k = kw.find((w) => animNames.some((n) => n.toLowerCase().includes(w)));
-    if (k) return animNames.find((n) => n.toLowerCase().includes(k));
-  }
-  return '';
-}
-
-/** 自动补齐皮肤缺失的状态映射：未配置的标准状态，模糊匹配到已有动画名 */
-function autoCompleteSkinStates(skin) {
-  if (!skin || !skin.spine) return skin;
-  const animNames = [];
-  const animCache = skin._animNames || [];
-  if (animCache.length) animNames.push(...animCache);
-  if (!animNames.length) return skin;
-
-  const STANDARD = ['idle', 'thinking', 'reading', 'planning', 'working', 'task_done', 'work_done'];
-  skin.states = skin.states || {};
-  skin.extraStates = skin.extraStates || {};
-  STANDARD.forEach((state) => {
-    if (skin.states[state] || skin.extraStates[state]) return; // 已有映射
-    const anim = fuzzyMatchAnim(state, animNames);
-    if (anim) skin.extraStates[state] = anim; // 放 extraStates，避免覆盖用户手写的 states
-  });
-  return skin;
-}
-
 function loadSkins() {
   const result = [];
   const seen = new Set(); // 同名皮肤只取优先级最高的一个
@@ -863,17 +812,10 @@ function loadSkins() {
         const assetOk = ['skeleton', 'atlas', 'png'].every((k) => spine[k] && fs.existsSync(path.join(d, spine[k])));
         if (!assetOk) continue;
 
-        // 扫描 skeleton JSON 的动画名（.skel 二进制无法直接解析，跳过自动适配）
-        let animNames = [];
-        const skelPath = path.join(d, spine.skeleton);
-        if (/\.json$/i.test(spine.skeleton)) {
-          try {
-            const skel = JSON.parse(fs.readFileSync(skelPath, 'utf8'));
-            animNames = Object.keys(skel.animations || {});
-          } catch (e) { /* 解析失败则无动画名 */ }
-        }
-
-        const skin = autoCompleteSkinStates({
+        // 姿态完全由皮肤自定义：
+        // states（姿态名 → 动画名）+ extraStates（扩展姿态）+ poseNames（可选：姿态显示名）
+        // 应用不做任何内置默认姿态与自动补全，皮肤定义几个姿态就是几个
+        const skin = {
           id: name,
           name: meta.name || name,
           author: meta.author || '',
@@ -881,10 +823,9 @@ function loadSkins() {
           source: meta.source || '',
           states: meta.states || {},
           extraStates: meta.extraStates || {},
+          poseNames: meta.poseNames || {},
           spine,
-          _animNames: animNames,
-        });
-        delete skin._animNames;
+        };
         result.push(skin);
         seen.add(name);
       } catch (e) {
@@ -1416,9 +1357,11 @@ function openSettingsWindow() {
   settingsWin = new BrowserWindow({
     width: 520,
     height: 620,
+    minWidth: 480,
+    minHeight: 560,
     transparent: true,
     frame: false,
-    resizable: false,
+    resizable: true,  // 支持拖拽窗口边缘自定义大小；关闭后重开会新建窗口回到默认尺寸
     skipTaskbar: true,
     alwaysOnTop: true,
     hasShadow: true,
@@ -1483,6 +1426,12 @@ ipcMain.on('settings:set-always-on-top', (e, val) => {
 
 ipcMain.on('settings:close', () => {
   if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close();
+});
+
+/** 设置窗口：恢复默认大小（520 × 620，保持当前位置） */
+ipcMain.on('settings:reset-size', () => {
+  if (!settingsWin || settingsWin.isDestroyed()) return;
+  settingsWin.setSize(520, 620, false);
 });
 
 /* ---------- 应用生命周期 ---------- */

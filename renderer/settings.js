@@ -87,8 +87,8 @@
 
   /* ---------- 姿势切换 ---------- */
 
-  /** 标准状态的中文名（扩展状态回退显示原始名） */
-  const STATE_CN = {
+  /** 常见姿态名 → 显示名兜底；皮肤的 poseNames 优先，其次此表，最后显示姿态名本身 */
+  const POSE_LABELS = {
     idle: '发呆',
     reading: '读取内容',
     planning: '准备计划',
@@ -98,6 +98,25 @@
     work_done: '工作结束',
   };
 
+  /** 姿态显示名：skin.poseNames → POSE_LABELS → 姿态名 */
+  function poseLabel(key, skin) {
+    if (skin && skin.poseNames && skin.poseNames[key]) return skin.poseNames[key];
+    return POSE_LABELS[key] || key;
+  }
+
+  /** 皮肤的全部姿态（states + extraStates 合并去重，保持声明顺序） */
+  function skinPoseEntries(skin) {
+    const out = [];
+    const seen = {};
+    [skin.states, skin.extraStates].forEach((map) => {
+      if (!map) return;
+      Object.keys(map).forEach((k) => {
+        if (!seen[k]) { seen[k] = 1; out.push([k, poseLabel(k, skin)]); }
+      });
+    });
+    return out;
+  }
+
   const poseGrid = document.getElementById('pose-grid');
   const poseBtns = new Map(); // state → button
 
@@ -105,13 +124,11 @@
     poseBtns.forEach((b, s) => b.classList.toggle('active', s === state));
   }
 
-  /** 从皮肤元数据构建姿势按钮（标准状态 + 扩展状态），按当前启用皮肤 */
+  /** 从当前启用皮肤构建姿态按钮（姿态名完全由皮肤自定义） */
   function buildPoseGrid() {
     const skin = allSkins.find((s) => s.id === activeSkinId) || allSkins[0];
     if (!skin) return;
-    const entries = Object.keys(skin.states || {}).map((k) => [k, STATE_CN[k] || k]);
-    Object.keys(skin.extraStates || {}).forEach((k) => entries.push([k, STATE_CN[k] || k]));
-    entries.forEach(([state, label]) => {
+    skinPoseEntries(skin).forEach(([state, label]) => {
       const b = document.createElement('button');
       b.className = 'pose-btn';
       b.textContent = label;
@@ -488,7 +505,7 @@
       ['作者', skin ? skin.author || '—' : '—'],
       ['版本', skin ? skin.version : '—'],
       ['素材来源', skin ? skin.source || '—' : '—'],
-      ['状态数', skin ? Object.keys(skin.states || {}).length + ' 个' : '—'],
+      ['姿态数', skin ? skinPoseEntries(skin).length + ' 个' : '—'],
     ];
     const meta = document.createElement('div');
     meta.innerHTML = rows.map(([label, value]) =>
@@ -496,20 +513,17 @@
       '<span class="about-value">' + value + '</span></div>'
     ).join('');
 
-    // 状态映射明细：手写 states + 自动适配 extraStates
-    if (skin && (Object.keys(skin.states || {}).length || Object.keys(skin.extraStates || {}).length)) {
+    // 姿态映射明细：皮肤自定义姿态名（显示名）→ 动画名
+    const poseEntries = skin ? skinPoseEntries(skin) : [];
+    if (poseEntries.length) {
       const mapBlock = document.createElement('div');
       mapBlock.className = 'skin-state-map';
-      const entries = [];
-      Object.keys(skin.states || {}).forEach((k) => entries.push([k, skin.states[k], false]));
-      Object.keys(skin.extraStates || {}).forEach((k) => {
-        if (!skin.states || !skin.states[k]) entries.push([k, skin.extraStates[k], true]);
-      });
-      mapBlock.innerHTML = entries.map(([state, anim, auto]) =>
-        '<span class="state-chip' + (auto ? ' auto' : '') + '" title="' + (auto ? '自动适配' : '手动配置') + '">' +
-          (STATE_CN[state] || state) + ' → ' + anim +
-        '</span>'
-      ).join('');
+      mapBlock.innerHTML = poseEntries.map(([state, label]) => {
+        const anim = (skin.states && skin.states[state]) || (skin.extraStates && skin.extraStates[state]);
+        return '<span class="state-chip" title="' + escapeHtml(label !== state ? label + '（' + state + '）' : state) + '">' +
+          escapeHtml(label) + ' → ' + escapeHtml(anim || '') +
+        '</span>';
+      }).join('');
       meta.appendChild(mapBlock);
     }
     info.appendChild(meta);
@@ -827,6 +841,9 @@
 
   // 重置窗口大小（显示面板）
   document.getElementById('btn-reset-size').addEventListener('click', () => window.pet.resize('reset'));
+
+  // 重置设置面板大小（显示面板）：恢复默认 520 × 620
+  document.getElementById('btn-reset-settings-size').addEventListener('click', () => window.pet.resetSettingsSize());
 
   /* ---------- 初始化 ---------- */
   window.pet.onStateChange((state) => highlightPose(state));
