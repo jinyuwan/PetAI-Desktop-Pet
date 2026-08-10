@@ -94,7 +94,7 @@
   }
 
   function showWelcome() {
-    addMsg('你好呀，我是蕾米～ 有什么想聊的？', 'bot');
+    addMsg('你好呀，我是' + (window.__petName || '蕾米') + '～ 有什么想聊的？', 'bot');
   }
 
   /* ---------- 姿势联动（复用主进程 pet:set-pose → 宠物窗口） ---------- */
@@ -301,6 +301,20 @@
     restoreHistory();
   });
 
+  /* ---------- 宠物名（跟随皮肤） ---------- */
+
+  function applyPetName(name) {
+    window.__petName = name || '蕾米';
+    document.title = window.__petName + '聊天';
+    input.placeholder = '和' + window.__petName + '说点什么…';
+  }
+
+  // 皮肤切换（payload: { skinId, petName }）→ 同步宠物名
+  window.pet.onSkinChanged((payload) => {
+    if (payload && payload.petName) applyPetName(payload.petName);
+  });
+
   /* ---------- 启动 ---------- */
+  window.pet.getPetName().then(applyPetName).catch(() => {});
   restoreHistory();
 })();

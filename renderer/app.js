@@ -20,6 +20,11 @@
   let isSleeping = false;  // 打盹中（长时间无互动）
   let lastIdleMinutes = 0; // 最近一次空闲分钟数（主进程推送）
 
+  /** 当前宠物名：皮肤 petName → 皮肤名 → 「蕾米」 */
+  function petName() {
+    return (currentSkin && currentSkin.petName) || '蕾米';
+  }
+
   /* ---------- 气泡 ---------- */
 
   let bubbleTimer = null;
@@ -72,14 +77,20 @@
     return findPose(['idle', 'stand', '待机', '发呆'], 'first');
   }
 
-  /** 随机动作姿态：优先从非基准姿态里挑，只有一个姿态时就用它 */
+  /** 随机动作姿态：只从 states（常规姿态）里挑，避免特殊大幅动作（extraStates）随机触发撕裂画面 */
   function randomActionPose() {
-    const poses = getPoseNames();
-    if (!poses.length) return '';
+    const s = currentSkin || {};
     const base = basePose();
-    const pool = base ? poses.filter((p) => p !== base) : poses;
-    const list = pool.length ? pool : poses;
-    return list[Math.floor(Math.random() * list.length)];
+    // 候选池 = states 去掉基准姿态；states 为空时退化为全部姿态
+    let pool = [];
+    if (s.states && Object.keys(s.states).length) {
+      pool = Object.keys(s.states).filter((p) => p !== base);
+    } else {
+      const poses = getPoseNames();
+      pool = base ? poses.filter((p) => p !== base) : poses;
+    }
+    if (!pool.length) pool = base ? [base] : [];
+    return pool[Math.floor(Math.random() * pool.length)];
   }
 
   let actionTimer = null;      // 动作调度定时器
@@ -207,16 +218,37 @@
       // 注意：spine-player 4.2 用 skeleton/atlas 参数（不是 jsonUrl/atlasUrl/pngUrl），
       // 且 URL 不能带查询参数（否则扩展名破坏，误按二进制解析）
       const skinUrl = (file) => 'skin://local/' + encodeURIComponent(_skin.id) + '/' + file;
+
+      // 双版本兼容：spine-player 4.2 解析旧版 JSON 骨架本身没问题，
+      // 但「自动计算动画视口」在旧版数据上会算出非法边界（Animation bounds are invalid）。
+      // 解决：先读骨架版本，旧版（非 4.2）改用骨架 AABB 作为固定 viewport，跳过自动计算。
+      let viewport = { padLeft: '4%', padRight: '4%', padTop: '2%', padBottom: '4%' };
+      try {
+        const res = await fetch(skinUrl(_skin.spine.skeleton));
+        if (res.ok) {
+          const json = await res.json();
+          const ver = (json.skeleton && json.skeleton.spine) || '';
+          const isNew = ver.indexOf('4.2') === 0;
+          if (!isNew && json.skeleton) {
+            const s = json.skeleton;
+            const w = s.width || 800, h = s.height || 800;
+            const pad = Math.max(w, h) * 0.04;
+            viewport = { x: (s.x || 0) - pad, y: (s.y || 0) - pad, width: w + pad * 2, height: h + pad * 2 };
+            console.log('[pet] 旧版骨架 (' + ver + ')，已使用固定 viewport');
+          }
+        }
+      } catch (e) { /* 读取失败则用默认百分比 viewport */ }
+
       const p = new spine.SpinePlayer(playerEl, {
         skeleton: skinUrl(_skin.spine.skeleton),
         atlas: skinUrl(_skin.spine.atlas),
         animation: resolveAnimation(basePose() || 'idle'),
-        skin: undefined,
+        skin: _skin.spine.skin || undefined, // 皮肤可指定启用哪个 skin（多 skin 骨架：default 可能是空的）
         backgroundColor: '#00000000',
         alpha: true,
         showControls: false,
         showLoading: true,
-        viewport: { padLeft: '4%', padRight: '4%', padTop: '2%', padBottom: '4%' },
+        viewport,
         success: (instance) => {
           if (token !== skinLoadToken) {
             // 已被更新的切换打断：销毁这次迟到的实例，不覆盖 player
@@ -444,7 +476,7 @@
       if (h >= 6 && h < 9) {
         lastGreetingDate = dateKey;
         lastHourReport = h;
-        showBubble('🌤', '早安~ 新的一天，蕾米会一直陪着你！', 4000);
+        showBubble('🌤', '早安~ 新的一天，' + petName() + '会一直陪着你！', 4000);
         return;
       }
       if (h >= 22) {

@@ -476,7 +476,7 @@ const aiConfigFile = () => path.join(app.getPath('userData'), 'ai-config.json');
 const DEFAULT_AI_CONFIG = {
   profiles: [],
   activeProfileId: null,
-  systemPrompt: '你是陪伴用户工作学习的桌面宠物蕾米，语气亲切自然，回复简洁，用中文交流。',
+  systemPrompt: '你是陪伴用户工作学习的桌面宠物{petName}，语气亲切自然，回复简洁，用中文交流。',
   maxContextMessages: 20, // 每次请求携带的最近消息条数（控制上下文 Token 消耗）
 };
 
@@ -559,6 +559,10 @@ function buildMessages(activeSession) {
   const cfg = loadAiConfig();
   // 人设留空 = 不注入任何 system 人设，完全尊重用户设置
   let sysPrompt = (cfg.systemPrompt || '').trim();
+  // 宠物名占位符 → 当前皮肤 petName；旧提示词里的「蕾米」跟随宠物名（保证一致性）
+  const petName = getPetName();
+  sysPrompt = sysPrompt.replace(/\{petName\}/g, petName);
+  if (petName !== '蕾米') sysPrompt = sysPrompt.split('蕾米').join(petName);
   const uName = (loadPrefs().userName || '').trim();
   if (sysPrompt && uName) {
     sysPrompt += '\n\n（用户希望你称呼他为「' + uName + '」，请在对话中自然地使用这个称呼。）';
@@ -821,6 +825,7 @@ function loadSkins() {
           author: meta.author || '',
           version: meta.version || '1.0',
           source: meta.source || '',
+          petName: meta.petName || meta.name || '蕾米', // 宠物名：皮肤自定义，缺省用皮肤名
           states: meta.states || {},
           extraStates: meta.extraStates || {},
           poseNames: meta.poseNames || {},
@@ -852,11 +857,36 @@ ipcMain.on('skins:set-active', (e, skinId) => {
   prefs.skinId = skinId.slice(0, 64);
   savePrefs();
   // 广播给所有窗口：宠物窗口重载皮肤，设置窗口刷新高亮与姿势列表
-  const payload = prefs.skinId;
+  const skin = loadSkins().find((s) => s.id === prefs.skinId);
+  const payload = { skinId: prefs.skinId, petName: skin ? skin.petName : '蕾米' };
   [win, chatWin, settingsWin].forEach((w) => {
     if (w && !w.isDestroyed()) w.webContents.send('skin:changed', payload);
   });
+  updateTrayTooltip();
 });
+
+/** 当前宠物名：取启用皮肤 petName，缺省「蕾米」（带缓存，避免每次 AI 请求重复扫盘） */
+let petNameCache = { skinId: null, name: '蕾米' };
+function getPetName() {
+  if (petNameCache.skinId === (prefs.skinId || '')) return petNameCache.name;
+  let name = '蕾米';
+  try {
+    const skins = loadSkins();
+    if (skins.length) {
+      const active = prefs.skinId ? skins.find((s) => s.id === prefs.skinId) : null;
+      name = (active || skins[0]).petName || '蕾米';
+    }
+  } catch (e) { /* 保持默认 */ }
+  petNameCache = { skinId: prefs.skinId || '', name };
+  return name;
+}
+
+ipcMain.handle('pet:get-name', () => getPetName());
+
+/** 更新托盘悬浮提示（跟随宠物名） */
+function updateTrayTooltip() {
+  if (tray && !tray.isDestroyed()) tray.setToolTip('AI 桌面宠物 · ' + getPetName());
+}
 
 /* ---------- skin:// 协议：服务外部皮肤文件 ---------- */
 
@@ -1330,7 +1360,7 @@ function createTray() {
   const iconPath = path.join(__dirname, 'assets', 'tray-icon.png');
   const icon = nativeImage.createFromPath(iconPath);
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon.resize({ width: 16, height: 16 }));
-  tray.setToolTip('AI 桌面宠物 · 蕾米');
+  updateTrayTooltip();
 
   tray.on('click', togglePetVisible);          // 左键：显示/隐藏宠物
   tray.on('right-click', openSettingsWindow);  // 右键：打开设置

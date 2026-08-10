@@ -13,8 +13,11 @@ contextBridge.exposeInMainWorld('pet', {
   /** 皮肤：切换启用皮肤（保存并广播） */
   setActiveSkin: (skinId) => ipcRenderer.send('skins:set-active', skinId),
 
-  /** 皮肤：监听切换广播（宠物窗口重载皮肤） */
-  onSkinChanged: (cb) => ipcRenderer.on('skin:changed', (e, skinId) => cb(skinId)),
+  /** 皮肤：获取当前宠物名（启用皮肤的 petName，缺省「蕾米」） */
+  getPetName: () => ipcRenderer.invoke('pet:get-name'),
+
+  /** 皮肤：监听切换广播（payload: { skinId, petName }） */
+  onSkinChanged: (cb) => ipcRenderer.on('skin:changed', (e, payload) => cb(payload)),
 
   /** 窗口缩放：dir > 0 放大，< 0 缩小，'reset' 重置 */
   resize: (dir) => ipcRenderer.send('pet:resize', dir),

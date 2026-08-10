@@ -28,7 +28,7 @@
   /* ---------- 主题色调（显示面板） ---------- */
 
   const THEME_PRESETS = [
-    { hex: '#e8a0bf', name: '蕾米粉' },
+    { hex: '#e8a0bf', name: '樱花粉' },
     { hex: '#b08ae8', name: '薰衣草紫' },
     { hex: '#8ab8e8', name: '天空蓝' },
     { hex: '#7ad0d0', name: '薄荷青' },
@@ -468,6 +468,29 @@
     }
   });
 
+  /* ---------- 宠物名（跟随皮肤，缺省「蕾米」） ---------- */
+
+  function applyPetName(name) {
+    const n = name || '蕾米';
+    document.getElementById('settings-title').textContent = n + ' · 设置';
+    const avatar = document.getElementById('avatar');
+    avatar.textContent = n.charAt(0) || '蕾';
+    const set = (id, tpl) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = tpl.replace('{n}', n);
+    };
+    set('desc-visible', '在桌面上显示 / 隐藏{n}');
+    set('desc-theme', '自定义{n}的整体配色，实时应用到对话框 / 设置 / 手柄');
+    set('desc-reminder', '到点让{n}跳出来提醒你');
+    set('desc-callname', '{n}怎么称呼你');
+  }
+
+  // 皮肤切换（payload: { skinId, petName }）→ 同步宠物名 + 刷新皮肤信息
+  window.pet.onSkinChanged((payload) => {
+    if (payload && payload.petName) applyPetName(payload.petName);
+    loadActiveSkinInfo();
+  });
+
   /* ---------- 关于皮肤 ---------- */
 
   let allSkins = [];          // 全部皮肤（缓存，供选择与姿势重建）
@@ -545,8 +568,7 @@
     } catch (e) { /* ignore */ }
   }
 
-  // 设置窗口打开时 / 皮肤切换后 → 刷新高亮
-  window.pet.onSkinChanged(() => loadActiveSkinInfo());
+  // 设置窗口打开时 / 皮肤切换后 → 刷新高亮（切换监听见上方「宠物名」块，合并处理）
 
   /* ---------- 关于 PetAI ---------- */
 
@@ -855,6 +877,7 @@
     loadUserName();
     loadCompanionStats();
     loadCurrentTheme();
+    window.pet.getPetName().then(applyPetName).catch(() => {});
     try {
       const skins = await window.pet.getSkins();
       allSkins = skins;
